@@ -1,19 +1,23 @@
-import os
-from flask import Flask, jsonify, redirect, request, url_for
+import time
+import uuid
+
+from flask import Flask, g, redirect, request, url_for
 from flask_login import current_user
 from sqlalchemy import text
+from flask_wtf.csrf import CSRFError
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from .config import Config
 from .extensions import db, migrate, login_manager, mail, ma, limiter, talisman, csrf, cors
+from .utils.responses import fail
 
 
 def _unauthorized():
-    return jsonify({"error": "unauthorized", "message": "Autenticación requerida"}), 401
+    return fail("Autenticación requerida", 401, code="unauthorized")
 
 
 def _forbidden():
-    return jsonify({"error": "forbidden", "message": "No tiene permisos para realizar esta acción"}), 403
+    return fail("No tiene permisos para realizar esta acción", 403, code="forbidden")
 
 
 def create_app(config_class: type = Config) -> Flask:
@@ -43,6 +47,33 @@ def create_app(config_class: type = Config) -> Flask:
             response.vary.add("Origin")
         return response
 
+    @app.before_request
+    def _start_request_log():
+        if request.path.startswith(("/api/v1/", "/admin")):
+            request_id = request.headers.get("X-Request-ID", "")[:64]
+            g.request_id = request_id or uuid.uuid4().hex
+            g.request_started = time.monotonic()
+
+    @app.after_request
+    def _log_request(response):
+        request_id = getattr(g, "request_id", None)
+        if not request_id:
+            return response
+        response.headers["X-Request-ID"] = request_id
+        duration_ms = int((time.monotonic() - getattr(g, "request_started", time.monotonic())) * 1000)
+        user_id = current_user.get_id() if current_user.is_authenticated else None
+        app.logger.info(
+            "request_id=%s method=%s path=%s endpoint=%s status=%s duration_ms=%s user_id=%s",
+            request_id,
+            request.method,
+            request.path,
+            request.endpoint,
+            response.status_code,
+            duration_ms,
+            user_id,
+        )
+        return response
+
     # Init extensions
     db.init_app(app)
     migrate.init_app(app, db)
@@ -70,6 +101,12 @@ def create_app(config_class: type = Config) -> Flask:
             return _unauthorized()
         return redirect(url_for("admin_ui.login_page"))
 
+    @app.errorhandler(CSRFError)
+    def _on_csrf_error(err: CSRFError):
+        if request.path.startswith("/api/v1/"):
+            return fail("La verificación de seguridad expiró. Recargá la página e intentá nuevamente.", 400, code="csrf_failed")
+        return err.description, 400
+
     # Register error handlers for clean JSON
     from .utils.responses import register_error_handlers
 
@@ -87,13 +124,6 @@ def create_app(config_class: type = Config) -> Flask:
     from .blueprints.admin.ui import admin_ui_bp
 
     csrf.exempt(public_bp)
-    csrf.exempt(admin_auth_bp)
-    csrf.exempt(admin_dashboard_bp)
-    csrf.exempt(admin_tribute_types_bp)
-    csrf.exempt(admin_availability_bp)
-    csrf.exempt(admin_appointments_bp)
-    csrf.exempt(admin_locations_bp)
-    csrf.exempt(admin_access_bp)
     csrf.exempt(admin_ui_bp)
 
     app.register_blueprint(public_bp, url_prefix="/api/v1/public")
@@ -118,7 +148,7 @@ def create_app(config_class: type = Config) -> Flask:
     def healthz():
         try:
             db.session.execute(text("SELECT 1"))
-            return {"status": "ok"}
+            return {"status": "ok", "database": "ok", "configuration": "loaded"}
         except Exception:
             app.logger.exception("Health check database query failed")
             return {"status": "unavailable"}, 503

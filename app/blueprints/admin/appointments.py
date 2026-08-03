@@ -92,7 +92,11 @@ def update_appointment(appointment_id: int):
 
     if "status" in data and data["status"] != a.status:
         new_status = data["status"]
-        if new_status == "cancelled" and a.status != "cancelled":
+        if a.status == "cancelled":
+            return fail("Una reserva cancelada no puede reactivarse", 400, code="invalid_transition")
+        if new_status == "cancelled":
+            if a.status not in ("reserved", "confirmed"):
+                return fail("Solo se pueden cancelar reservas pendientes o confirmadas", 400, code="invalid_transition")
             appointment_service.cancel_appointment(a, by_admin=True)
         else:
             a.status = new_status
@@ -102,13 +106,9 @@ def update_appointment(appointment_id: int):
         new_slot = db.session.get(AppointmentSlot, data["slot_id"])
         if not new_slot:
             return fail("Slot destino no encontrado", 404, code="slot_not_found")
-        if new_slot.is_blocked or new_slot.reserved_count >= new_slot.capacity:
-            return fail("El slot destino no tiene cupo", 400, code="slot_unavailable")
-        old_slot = a.slot
-        if old_slot:
-            old_slot.reserved_count = max(0, old_slot.reserved_count - 1)
-        new_slot.reserved_count += 1
-        a.slot = new_slot
+        error = _move_to_slot(a, new_slot)
+        if error:
+            return error
     db.session.commit()
     log_activity("APPOINTMENT_UPDATE", f"Reserva {a.reservation_code} actualizada")
     return ok(AppointmentAdminSchema().dump(a))
@@ -122,6 +122,8 @@ def cancel_appointment(appointment_id: int):
         return fail("Reserva no encontrada", 404, code="not_found")
     if a.status == "cancelled":
         return ok(AppointmentAdminSchema().dump(a))
+    if a.status not in ("reserved", "confirmed"):
+        return fail("Solo se pueden cancelar reservas pendientes o confirmadas", 400, code="invalid_transition")
     appointment_service.cancel_appointment(a, by_admin=True)
     log_activity("APPOINTMENT_CANCEL", f"Reserva {a.reservation_code} cancelada por admin")
     return ok(AppointmentAdminSchema().dump(a))
@@ -144,20 +146,9 @@ def reschedule_appointment(appointment_id: int):
     new_slot = db.session.get(AppointmentSlot, new_slot_id)
     if not new_slot:
         return fail("Slot destino no encontrado", 404, code="slot_not_found")
-    if new_slot.is_blocked:
-        return fail("El slot destino está bloqueado", 400, code="slot_blocked")
-    if new_slot.reserved_count >= new_slot.capacity:
-        return fail("El slot destino no tiene cupo", 400, code="slot_full")
-
-    old_slot = a.slot
-    if old_slot and old_slot.id != new_slot.id:
-        old_slot.reserved_count = max(0, old_slot.reserved_count - 1)
-    new_slot.reserved_count += 1
-    a.slot = new_slot
-    if new_slot.location_id:
-        a.location_id = new_slot.location_id
-    if new_slot.tribute_type_id:
-        a.tribute_type_id = new_slot.tribute_type_id
+    error = _move_to_slot(a, new_slot)
+    if error:
+        return error
     db.session.commit()
     log_activity("APPOINTMENT_RESCHEDULE", f"Reserva {a.reservation_code} reprogramada a slot {new_slot.id}")
     return ok(AppointmentAdminSchema().dump(a))
@@ -167,3 +158,21 @@ def reschedule_appointment(appointment_id: int):
 @login_required
 def status_options():
     return ok([{"value": s, "label": s.replace("_", " ").capitalize()} for s in APPOINTMENT_STATUSES])
+
+
+def _move_to_slot(appointment: Appointment, new_slot: AppointmentSlot):
+    if appointment.status not in ("reserved", "confirmed"):
+        return fail("La reserva no puede reprogramarse en su estado actual", 400, code="invalid_state")
+    if new_slot.is_blocked:
+        return fail("El slot destino está bloqueado", 400, code="slot_blocked")
+    if new_slot.reserved_count >= new_slot.capacity:
+        return fail("El slot destino no tiene cupo", 400, code="slot_full")
+    if new_slot.tribute_type_id != appointment.tribute_type_id:
+        return fail("El slot destino no corresponde al tributo de la reserva", 400, code="slot_tribute_mismatch")
+    old_slot = appointment.slot
+    if old_slot and old_slot.id != new_slot.id:
+        old_slot.reserved_count = max(0, old_slot.reserved_count - 1)
+    new_slot.reserved_count += 1
+    appointment.slot = new_slot
+    appointment.location_id = new_slot.location_id
+    return None

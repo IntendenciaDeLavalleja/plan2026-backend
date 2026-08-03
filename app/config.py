@@ -60,4 +60,5 @@ class Config:
 
     # CSRF
     WTF_CSRF_SECRET_KEY = os.environ.get("WTF_CSRF_SECRET_KEY", "csrf-change-me")
-    CSRF_ENABLED = False  # we protect the API with sessions/2FA, not WTForms CSRF
+    WTF_CSRF_ENABLED = os.environ.get("WTF_CSRF_ENABLED", "True").lower() == "true"
+    WTF_CSRF_HEADERS = ["X-CSRFToken", "X-CSRF-Token"]

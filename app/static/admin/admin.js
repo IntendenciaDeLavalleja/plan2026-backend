@@ -41,27 +41,57 @@
     if (event.key === 'Escape' && shell.classList.contains('is-nav-open')) closeNav();
   });
 
+  const API_BASE_URL = '/api/v1';
+  const API_TIMEOUT_MS = 15000;
+
+  function buildApiUrl(path) {
+    const normalizedPath = String(path || '').trim().replace(/^\/+/, '');
+    if (!normalizedPath) throw new Error('La ruta de la API es requerida.');
+    if (/^https?:\/\//i.test(normalizedPath) || normalizedPath.startsWith('api/')) {
+      throw new Error('Las rutas administrativas deben ser relativas a /api/v1.');
+    }
+    return API_BASE_URL + '/' + normalizedPath;
+  }
+
   function errorMessage(json, fallback) {
     if (json && json.error && typeof json.error === 'object') return json.error.message || fallback;
     if (json && typeof json.message === 'string') return json.message;
     return fallback;
   }
 
-  async function request(url, options) {
-    const config = Object.assign({ credentials: 'same-origin' }, options || {});
+  async function request(path, options) {
+    const url = buildApiUrl(path);
+    const supplied = options || {};
+    const timeout = supplied.timeout || API_TIMEOUT_MS;
+    const controller = supplied.signal ? null : new AbortController();
+    const config = Object.assign({ credentials: 'same-origin' }, supplied);
+    delete config.timeout;
+    if (controller) config.signal = controller.signal;
     config.headers = Object.assign({ Accept: 'application/json' }, config.headers || {});
+    const requestId = window.crypto && typeof window.crypto.randomUUID === 'function'
+      ? window.crypto.randomUUID()
+      : String(Date.now()) + '-' + Math.random().toString(16).slice(2);
+    config.headers['X-Request-ID'] = requestId;
+    if (!/^(GET|HEAD|OPTIONS)$/i.test(config.method || 'GET')) {
+      const csrfToken = document.querySelector('meta[name="csrf-token"]');
+      if (csrfToken && csrfToken.content) config.headers['X-CSRFToken'] = csrfToken.content;
+    }
     if (config.body && !(config.body instanceof FormData)) {
       config.headers = Object.assign({ 'Content-Type': 'application/json' }, config.headers);
       if (typeof config.body !== 'string') config.body = JSON.stringify(config.body);
     }
     let response;
+    const timeoutId = controller ? window.setTimeout(function () { controller.abort(); }, timeout) : null;
     try {
       response = await fetch(url, config);
     } catch (error) {
       console.error('Error de red en la API administrativa.', { url: url, message: error && error.message });
-      const networkError = new Error('No se pudo conectar con el sistema. Revisá la conexión e intentá nuevamente.');
-      networkError.code = 'network_error';
+      const networkError = new Error(error && error.name === 'AbortError' ? 'La operación tardó demasiado. Intentá nuevamente.' : 'No se pudo conectar con el sistema. Revisá la conexión e intentá nuevamente.');
+      networkError.code = error && error.name === 'AbortError' ? 'request_timeout' : 'network_error';
+      networkError.url = url;
       throw networkError;
+    } finally {
+      if (timeoutId) window.clearTimeout(timeoutId);
     }
 
     const contentType = response.headers.get('content-type') || '';
@@ -75,6 +105,9 @@
       });
       const contentError = new Error('El servidor respondió ' + response.status + ' con contenido no JSON.');
       contentError.status = response.status;
+      contentError.code = 'unexpected_content_type';
+      contentError.url = response.url;
+      contentError.requestId = response.headers.get('X-Request-ID') || requestId;
       throw contentError;
     }
 
@@ -89,6 +122,9 @@
       });
       const parseError = new Error('El servidor devolvió una respuesta JSON inválida.');
       parseError.status = response.status;
+      parseError.code = 'invalid_json';
+      parseError.url = response.url;
+      parseError.requestId = response.headers.get('X-Request-ID') || requestId;
       throw parseError;
     }
     if (!response.ok || !json.ok) {
@@ -96,7 +132,10 @@
       apiError.code = json && json.error && json.error.code ? json.error.code : 'request_error';
       apiError.status = response.status;
       apiError.fields = json && json.error ? json.error.errors : null;
-      if ((response.status === 401 || response.status === 403) && window.location.pathname !== '/admin/login') {
+      apiError.url = response.url;
+      apiError.data = json;
+      apiError.requestId = response.headers.get('X-Request-ID') || requestId;
+      if (response.status === 401 && window.location.pathname !== '/admin/login') {
         window.location.assign('/admin/login');
       }
       throw apiError;
@@ -177,6 +216,23 @@
     });
     dialog.addEventListener('close', function () { restoreDialogFocus(dialog); });
   });
+  document.querySelectorAll('[data-api-href]').forEach(function (link) {
+    link.href = buildApiUrl(link.dataset.apiHref);
+  });
+  const logoutButton = document.querySelector('[data-admin-logout]');
+  if (logoutButton) {
+    logoutButton.addEventListener('click', async function () {
+      setBusy(logoutButton, true, 'Cerrando sesión...');
+      try {
+        await request('admin/auth/logout', { method: 'POST' });
+        window.location.assign('/admin/login');
+      } catch (error) {
+        notify(error.message, 'error');
+      } finally {
+        setBusy(logoutButton, false);
+      }
+    });
+  }
 
   function formatDate(value) {
     if (!value) return 'Sin fecha';
@@ -224,6 +280,8 @@
   }
 
   window.AdminUI = {
+    apiBaseUrl: API_BASE_URL,
+    buildApiUrl: buildApiUrl,
     request: request,
     notify: notify,
     clearNotice: clearNotice,

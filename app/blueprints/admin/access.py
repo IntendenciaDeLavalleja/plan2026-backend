@@ -40,6 +40,7 @@ def create_user():
     password = data.get("password") or ""
     full_name = (data.get("full_name") or "").strip() or None
     is_superuser = bool(data.get("is_superuser", False))
+    is_active = bool(data.get("is_active", True))
 
     if not username or not email or not password:
         return fail("Username, email y contraseña son requeridos", 400, code="missing_fields")
@@ -53,7 +54,7 @@ def create_user():
         email=email,
         full_name=full_name,
         is_superuser=is_superuser,
-        is_active=True,
+        is_active=is_active,
     )
     user.set_password(password)
     db.session.add(user)

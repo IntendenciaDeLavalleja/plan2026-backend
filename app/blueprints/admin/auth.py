@@ -27,8 +27,8 @@ def _new_captcha() -> tuple[str, int]:
 
 @admin_auth_bp.get("/captcha")
 def get_captcha():
-    question, answer = _new_captcha()
-    return ok({"question": question, "answer": answer})
+    question, _answer = _new_captcha()
+    return ok({"question": question})
 
 
 @admin_auth_bp.post("/login")
@@ -47,12 +47,12 @@ def login_step1():
 
     expected = session.pop("captcha_result", None)
     if expected is None or str(expected) != str(captcha):
-        log_activity("ADMIN_LOGIN_CAPTCHA_FAIL", f"Captcha inválido para {email}")
+        log_activity("ADMIN_LOGIN_CAPTCHA_FAIL", "Verificación de seguridad inválida")
         return fail("Verificación de seguridad inválida", 400, code="captcha_invalid")
 
     user = AdminUser.query.filter_by(email=email).first()
     if not user or not user.check_password(password):
-        log_activity("ADMIN_LOGIN_FAIL", f"Credenciales inválidas: {email}")
+        log_activity("ADMIN_LOGIN_FAIL", "Credenciales inválidas")
         return fail("Credenciales inválidas", 401, code="invalid_credentials")
     if not user.is_active:
         return fail("La cuenta está deshabilitada", 403, code="account_disabled")
@@ -69,7 +69,7 @@ def login_step1():
         pass
 
     session["2fa_user_id"] = user.id
-    log_activity("ADMIN_LOGIN_STEP1_SUCCESS", f"2FA enviado a {user.email}", user=user)
+    log_activity("ADMIN_LOGIN_STEP1_SUCCESS", "Segundo factor solicitado", user=user)
     return ok({"requires_2fa": True, "preview": _preview_email(user.email)})
 
 
@@ -103,8 +103,8 @@ def verify_2fa():
     user.last_login_at = db.func.now()
     db.session.commit()
 
+    session.clear()
     login_user(user)
-    session.pop("2fa_user_id", None)
     log_activity("ADMIN_LOGIN_2FA_SUCCESS", "Inicio de sesión exitoso", user=user)
     return ok({"user": user.to_dict()})
 
@@ -114,7 +114,8 @@ def logout():
     if current_user.is_authenticated:
         log_activity("ADMIN_LOGOUT", "Cierre de sesión")
     logout_user()
-    return ok({"ok": True})
+    session.clear()
+    return ok({"logged_out": True})
 
 
 @admin_auth_bp.get("/me")

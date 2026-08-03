@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import date, datetime, time, timedelta
 from typing import Iterable, Optional
 
+from flask import current_app
 from sqlalchemy import and_, or_
 
 from app.extensions import db
@@ -164,18 +165,14 @@ def list_available_dates(
     to_date = to_date or (from_date + timedelta(days=60))
 
     rows = (
-        db.session.query(
-            AppointmentSlot.date,
-            db.func.sum(AppointmentSlot.capacity - AppointmentSlot.reserved_count).label("remaining"),
-        )
-        .filter(
+        AppointmentSlot.query.filter(
             AppointmentSlot.tribute_type_id == tribute_type_id,
             AppointmentSlot.is_blocked.is_(False),
+            AppointmentSlot.reserved_count < AppointmentSlot.capacity,
             AppointmentSlot.date >= from_date,
             AppointmentSlot.date <= to_date,
         )
-        .group_by(AppointmentSlot.date)
-        .order_by(AppointmentSlot.date.asc())
+        .order_by(AppointmentSlot.date.asc(), AppointmentSlot.start_time.asc())
         .all()
     )
 
@@ -183,11 +180,19 @@ def list_available_dates(
     blocked = {h.date for h in HolidayOrBlockedDay.query.filter(
         HolidayOrBlockedDay.date >= from_date, HolidayOrBlockedDay.date <= to_date).all()}
 
-    out: list[dict] = []
-    for d, remaining in rows:
-        if d in blocked:
+    min_start = datetime.now() + timedelta(hours=current_app.config["MIN_ANTICIPATION_HOURS"])
+    max_start = datetime.now() + timedelta(days=current_app.config["MAX_ANTICIPATION_DAYS"])
+    dates: dict[date, int] = {}
+    for slot in rows:
+        if slot.date in blocked:
             continue
-        remaining = int(remaining or 0)
+        start = datetime.combine(slot.date, slot.start_time)
+        if start < min_start or start > max_start:
+            continue
+        dates[slot.date] = dates.get(slot.date, 0) + slot.remaining
+
+    out: list[dict] = []
+    for d, remaining in dates.items():
         out.append({
             "date": d.isoformat(),
             "remaining": remaining,
@@ -210,7 +215,12 @@ def list_available_slots(tribute_type_id: int, target_date: date) -> list[dict]:
         )
         .order_by(AppointmentSlot.start_time.asc())
     )
-    rows = q.all()
+    min_start = datetime.now() + timedelta(hours=current_app.config["MIN_ANTICIPATION_HOURS"])
+    max_start = datetime.now() + timedelta(days=current_app.config["MAX_ANTICIPATION_DAYS"])
+    rows = [
+        slot for slot in q.all()
+        if min_start <= datetime.combine(slot.date, slot.start_time) <= max_start
+    ]
     return [r.to_dict() for r in rows]
 
 

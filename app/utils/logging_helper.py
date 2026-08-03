@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from flask import request
+from flask import current_app, request
 from flask_login import current_user
 
 from app.extensions import db
@@ -10,7 +10,7 @@ from app.models.user import ActivityLog
 
 
 def log_activity(action: str, details: str | None = None, user=None) -> None:
-    """Persist an activity log entry. Fails silently to avoid breaking main flows."""
+    """Persist an activity log entry without disrupting the primary operation."""
     try:
         user_id = None
         username = "anonymous"
@@ -32,5 +32,5 @@ def log_activity(action: str, details: str | None = None, user=None) -> None:
         )
         db.session.add(log)
         db.session.commit()
-    except Exception as exc:  # pragma: no cover
-        print(f"[log_activity] error: {exc}")
+    except Exception:  # pragma: no cover
+        current_app.logger.exception("Could not persist activity log")

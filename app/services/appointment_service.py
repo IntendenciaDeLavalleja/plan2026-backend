@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 
 from app.extensions import db
@@ -40,10 +40,19 @@ def _anticipation_max_days() -> int:
 
 
 def _count_active_for_document(document: str) -> int:
+    normalized = normalize_document(document)
     return Appointment.query.filter(
-        Appointment.citizen_document == document,
+        func.replace(
+            func.replace(func.replace(Appointment.citizen_document, ".", ""), "-", ""),
+            " ",
+            "",
+        ) == normalized,
         Appointment.status.in_(("reserved", "confirmed")),
     ).count()
+
+
+def normalize_document(document: str) -> str:
+    return (document or "").strip().replace(".", "").replace(" ", "").replace("-", "").upper()
 
 
 def book_appointment(payload: dict) -> Appointment:
@@ -149,7 +158,7 @@ def cancel_appointment(appointment: Appointment, *, by_admin: bool = False) -> N
     if appointment.status == "cancelled":
         return
     appointment.status = "cancelled"
-    appointment.cancelled_at = datetime.utcnow()
+    appointment.cancelled_at = datetime.now(timezone.utc).replace(tzinfo=None)
     slot = appointment.slot
     if slot is not None:
         slot.reserved_count = max(0, (slot.reserved_count or 0) - 1)

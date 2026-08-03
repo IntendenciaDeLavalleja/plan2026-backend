@@ -9,6 +9,7 @@ class AdminAuthTestConfig(Config):
     SECRET_KEY = "admin-auth-test-secret"
     SQLALCHEMY_DATABASE_URI = "sqlite://"
     CORS_ALLOWED_ORIGINS = ["https://plan2026.lavalleja.uy"]
+    WTF_CSRF_ENABLED = False
 
 
 def _app():
@@ -27,16 +28,16 @@ def _app():
     return app
 
 
-def test_login_template_uses_only_versioned_auth_endpoints():
+def test_login_template_uses_centralized_auth_paths():
     response = _app().test_client().get("/admin/login")
     page = response.get_data(as_text=True)
 
     assert response.status_code == 200
     assert response.content_type.startswith("text/html")
-    assert "/api/v1/admin/auth/captcha" in page
-    assert "/api/v1/admin/auth/login" in page
-    assert "/api/v1/admin/auth/verify-2fa" in page
-    assert "/api/admin/auth/" not in page
+    assert "AdminUI.request('admin/auth/captcha')" in page
+    assert "AdminUI.request('admin/auth/login'" in page
+    assert "AdminUI.request('admin/auth/verify-2fa'" in page
+    assert "/api/" not in page
 
 
 def test_admin_auth_returns_json_before_and_after_login(monkeypatch):
@@ -49,6 +50,9 @@ def test_admin_auth_returns_json_before_and_after_login(monkeypatch):
     assert captcha.status_code == 200
     assert captcha.content_type.startswith("application/json")
     assert captcha.json["ok"] is True
+    assert "answer" not in captcha.json["data"]
+    with client.session_transaction() as session:
+        captcha_answer = session["captcha_result"]
 
     invalid_login = client.post("/api/v1/admin/auth/login", json={})
     assert invalid_login.status_code == 400
@@ -60,7 +64,7 @@ def test_admin_auth_returns_json_before_and_after_login(monkeypatch):
         json={
             "email": "admin-test@example.com",
             "password": "test-password",
-            "captcha": str(captcha.json["data"]["answer"]),
+            "captcha": str(captcha_answer),
         },
     )
     assert login.status_code == 200
@@ -76,6 +80,12 @@ def test_admin_auth_returns_json_before_and_after_login(monkeypatch):
     assert current_user.status_code == 200
     assert current_user.content_type.startswith("application/json")
     assert current_user.json["data"]["user"]["username"] == "admin-test"
+
+    logout = client.post("/api/v1/admin/auth/logout")
+    assert logout.status_code == 200
+    assert logout.content_type.startswith("application/json")
+    assert logout.json["data"]["logged_out"] is True
+    assert client.get("/api/v1/admin/auth/me").status_code == 401
 
 
 def test_versioned_protected_endpoint_does_not_redirect_to_login():

@@ -73,6 +73,8 @@ def availability_overview():
         days = int(request.args.get("days", 30))
     except ValueError as exc:
         return fail(str(exc), 400, code="bad_request")
+    if days < 1 or days > 90:
+        return fail("days debe estar entre 1 y 90", 400, code="bad_request")
 
     to_date = _add_days(from_date, days)
     dates = list_available_dates(tribute_id, from_date=from_date, to_date=to_date)
@@ -141,10 +143,6 @@ def create_appointment():
     return ok(response, status=201)
 
 
-def _normalize_document(value: str) -> str:
-    return (value or "").strip().replace(".", "").replace(" ", "").replace("-", "").upper()
-
-
 @public_bp.get("/appointments/<string:code>")
 def get_appointment_by_code(code: str):
     """Look up a reservation by its friendly code (no auth, citizen-facing)."""
@@ -157,17 +155,18 @@ def get_appointment_by_code(code: str):
 
 @public_bp.post("/appointments/<string:code>/cancel")
 def cancel_appointment_public(code: str):
-    document = _normalize_document(
+    document = appointment_service.normalize_document(
         request.args.get("document") or (request.json or {}).get("document")
     )
+    if not document:
+        return fail("document es requerido para cancelar una reserva", 400, code="missing_document")
 
     appt = Appointment.query.filter_by(reservation_code=code.strip().upper()).first()
     if not appt:
         return fail("No se encontró la reserva", 404, code="not_found")
-    if document:
-        stored_document = _normalize_document(appt.citizen_document or "")
-        if stored_document != document:
-            return fail("Los datos no coinciden con la reserva", 404, code="not_found")
+    stored_document = appointment_service.normalize_document(appt.citizen_document or "")
+    if stored_document != document:
+        return fail("Los datos no coinciden con la reserva", 404, code="not_found")
 
     if appt.status not in ("reserved", "confirmed"):
         return fail("La reserva no puede cancelarse en su estado actual", 400, code="invalid_state")

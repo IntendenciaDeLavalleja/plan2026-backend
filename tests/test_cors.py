@@ -10,6 +10,7 @@ class CorsTestConfig(Config):
     SECRET_KEY = "cors-test-secret"
     SQLALCHEMY_DATABASE_URI = "sqlite://"
     CORS_ALLOWED_ORIGINS = [FRONTEND_ORIGIN]
+    WTF_CSRF_ENABLED = False
 
 
 def _client():

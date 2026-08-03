@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from flask import Blueprint, redirect, render_template, url_for
-from flask_login import current_user, login_required, logout_user
+from flask_login import current_user, login_required
 
 admin_ui_bp = Blueprint("admin_ui", __name__)
 
@@ -80,10 +80,3 @@ def logs_page():
     if not current_user.is_superuser:
         return redirect(url_for("admin_ui.dashboard_page"))
     return render_template("admin/logs.html", user=current_user, nav_items=_admin_nav("logs"))
-
-
-@admin_ui_bp.get("/admin/logout")
-@login_required
-def logout_page():
-    logout_user()
-    return redirect(url_for("admin_ui.login_page"))

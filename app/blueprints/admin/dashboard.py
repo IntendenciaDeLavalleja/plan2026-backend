@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 from flask import Blueprint
 from flask_login import login_required
@@ -104,5 +104,5 @@ def dashboard():
 def health():
     return ok({
         "status": "ok",
-        "now": datetime.utcnow().isoformat(),
+        "now": datetime.now(timezone.utc).isoformat(),
     })

@@ -78,7 +78,10 @@ def create_rule():
         ids = data.get("tribute_type_ids") or []
         if not ids:
             return fail("Seleccione al menos un tributo o marque 'aplica a todos'", 400, code="missing_tributes")
-        rule.tribute_types = TributeType.query.filter(TributeType.id.in_(ids)).all()
+        tributes = TributeType.query.filter(TributeType.id.in_(ids), TributeType.is_active.is_(True)).all()
+        if len(tributes) != len(set(ids)):
+            return fail("Uno o más tributos no están disponibles", 400, code="invalid_tributes")
+        rule.tribute_types = tributes
     db.session.add(rule)
     db.session.commit()
     log_activity("RULE_CREATE", f"Regla creada: {rule.name}")
@@ -106,12 +109,19 @@ def update_rule(rule_id: int):
         return fail("Datos inválidos", 422, code="validation_error", errors=err.messages)
 
     for key, value in data.items():
-        if key == "tribute_type_ids":
-            if rule.applies_to_all:
-                continue
-            rule.tribute_types = TributeType.query.filter(TributeType.id.in_(value or [])).all()
-        else:
+        if key != "tribute_type_ids":
             setattr(rule, key, value)
+    if "tribute_type_ids" in data or "applies_to_all" in data:
+        ids = data.get("tribute_type_ids", [tribute.id for tribute in rule.tribute_types])
+        if rule.applies_to_all:
+            rule.tribute_types = []
+        else:
+            if not ids:
+                return fail("Seleccione al menos un tributo o marque 'aplica a todos'", 400, code="missing_tributes")
+            tributes = TributeType.query.filter(TributeType.id.in_(ids), TributeType.is_active.is_(True)).all()
+            if len(tributes) != len(set(ids)):
+                return fail("Uno o más tributos no están disponibles", 400, code="invalid_tributes")
+            rule.tribute_types = tributes
     db.session.commit()
     log_activity("RULE_UPDATE", f"Regla actualizada: {rule.name}")
     return ok(AvailabilityRuleSchema().dump(rule))
@@ -377,6 +387,11 @@ def delete_location(location_id: int):
     loc = db.session.get(Location, location_id)
     if not loc:
         return fail("Sede no encontrada", 404, code="not_found")
+    if loc.slots.first() is not None or loc.appointments.first() is not None:
+        loc.is_active = False
+        db.session.commit()
+        log_activity("LOCATION_SOFT_DELETE", f"Sede desactivada: {loc.name}")
+        return ok({"soft_deleted": True, "id": location_id})
     db.session.delete(loc)
     db.session.commit()
     return ok({"deleted": True, "id": location_id})

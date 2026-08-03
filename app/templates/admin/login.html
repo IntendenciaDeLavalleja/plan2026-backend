@@ -4,6 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="light" />
+    <meta name="csrf-token" content="{{ csrf_token() }}" />
     <title>Acceso administrativo · Intendencia de Lavalleja</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='admin/admin.css') }}" />
     <style>
@@ -130,7 +131,7 @@
           captchaQuestion.textContent = 'Cargando verificación...';
           captchaQuestion.setAttribute('aria-busy', 'true');
           try {
-            const data = await AdminUI.request('/api/v1/admin/auth/captcha');
+            const data = await AdminUI.request('admin/auth/captcha');
             captchaQuestion.textContent = data && data.question ? data.question : 'Completá la verificación de seguridad.';
             captchaInput.value = '';
             if (settings.focus) captchaInput.focus();
@@ -157,7 +158,7 @@
             captcha: captchaInput.value
           };
           try {
-            const data = await AdminUI.request('/api/v1/admin/auth/login', { method: 'POST', body: payload });
+            const data = await AdminUI.request('admin/auth/login', { method: 'POST', body: payload });
             document.getElementById('preview-email').textContent = 'Código enviado a ' + ((data && data.preview) || 'tu correo registrado') + '.';
             const testCode = data && data.test_code;
             testCodeNotice.hidden = !testCode;
@@ -180,7 +181,7 @@
           AdminUI.clearNotice(notice);
           AdminUI.setBusy(twofaSubmit, true, 'Verificando...');
           try {
-            await AdminUI.request('/api/v1/admin/auth/verify-2fa', { method: 'POST', body: { code: codeInput.value } });
+            await AdminUI.request('admin/auth/verify-2fa', { method: 'POST', body: { code: codeInput.value } });
             window.location.href = '/admin';
           } catch (error) {
             AdminUI.notify(error.message || 'Código inválido.', 'error', notice);

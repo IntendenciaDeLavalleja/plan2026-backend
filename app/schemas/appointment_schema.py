@@ -23,6 +23,11 @@ def _validate_phone(value: str) -> None:
         raise ValidationError("Teléfono inválido.")
 
 
+def _validate_not_blank(value: str) -> None:
+    if not value or not value.strip():
+        raise ValidationError("Este campo no puede estar vacío.")
+
+
 class _BaseSchema(Schema):
     class Meta:
         unknown = EXCLUDE
@@ -31,10 +36,10 @@ class _BaseSchema(Schema):
 class AppointmentCreateSchema(_BaseSchema):
     tribute_type_id = fields.Int(required=True)
     slot_id = fields.Int(required=True)
-    citizen_name = fields.Str(required=True, validate=validate.Length(min=3, max=160))
-    citizen_document = fields.Str(required=True, validate=validate.Length(min=6, max=20))
-    phone = fields.Str(required=True, validate=validate.Length(min=6, max=40))
-    email = fields.Email(allow_none=True, load_default=None)
+    citizen_name = fields.Str(required=True, validate=[validate.Length(min=3, max=160), _validate_not_blank])
+    citizen_document = fields.Str(required=True, validate=validate.Length(min=6, max=12))
+    phone = fields.Str(required=True, validate=validate.Length(min=6, max=30))
+    email = fields.Email(allow_none=True, load_default=None, validate=validate.Length(max=120))
     reference_value = fields.Str(allow_none=True, load_default=None, validate=validate.Length(max=80))
     comments = fields.Str(allow_none=True, load_default=None, validate=validate.Length(max=1000))
     accept_terms = fields.Bool(required=True)
