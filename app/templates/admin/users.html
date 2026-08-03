@@ -42,7 +42,7 @@
   async function load() {
     rows.innerHTML = '<tr><td colspan="5"><div class="admin-loading">Cargando usuarios...</div></td></tr>';
     try {
-      const result = await AdminUI.request('/api/admin/access/users?per_page=100');
+      const result = await AdminUI.request('/api/v1/admin/access/users?per_page=100');
       rows.innerHTML = '';
       result.items.forEach(function (user) {
         const row = document.createElement('tr');
@@ -65,7 +65,7 @@
           deleteButton.addEventListener('click', async function () {
             if (!window.confirm('¿Eliminar la cuenta de ' + user.username + '? Esta acción no se puede deshacer.')) return;
             try {
-              await AdminUI.request('/api/admin/access/users/' + user.id, { method: 'DELETE' });
+              await AdminUI.request('/api/v1/admin/access/users/' + user.id, { method: 'DELETE' });
               AdminUI.notify('Usuario eliminado.', 'success');
               await load();
             } catch (error) { AdminUI.notify(error.message, 'error'); }
@@ -120,9 +120,9 @@
         is_active: document.getElementById('is-active').checked
       };
       if (editingId) {
-        await AdminUI.request('/api/admin/access/users/' + editingId, { method: 'PATCH', body: payload });
+        await AdminUI.request('/api/v1/admin/access/users/' + editingId, { method: 'PATCH', body: payload });
       } else {
-        await AdminUI.request('/api/admin/access/users', { method: 'POST', body: payload });
+        await AdminUI.request('/api/v1/admin/access/users', { method: 'POST', body: payload });
       }
       AdminUI.notify(editingId ? 'Usuario actualizado correctamente.' : 'Usuario creado correctamente.', 'success', notice);
       resetForm();

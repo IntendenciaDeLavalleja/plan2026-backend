@@ -264,7 +264,7 @@
     AdminUI.setBusy(reloadButton, true, 'Actualizando…');
     rows.innerHTML = '<tr><td colspan="4"><div class="admin-loading" role="status">Cargando tributos…</div></td></tr>';
     try {
-      const data = await AdminUI.request('/api/admin/tribute-types?per_page=200&include_inactive=true');
+      const data = await AdminUI.request('/api/v1/admin/tribute-types?per_page=200&include_inactive=true');
       items = data.items || [];
       render();
     } catch (error) {
@@ -301,7 +301,7 @@
       sort_order: Number(byId('sort_order').value || 100)
     };
     try {
-      await AdminUI.request(id ? '/api/admin/tribute-types/' + id : '/api/admin/tribute-types', {
+      await AdminUI.request(id ? '/api/v1/admin/tribute-types/' + id : '/api/v1/admin/tribute-types', {
         method: id ? 'PATCH' : 'POST', body: payload
       });
       AdminUI.notify(id ? 'Tributo actualizado correctamente.' : 'Tributo creado correctamente.', 'success');
@@ -321,7 +321,7 @@
     if (!deleteTarget || confirmDelete.disabled) return;
     AdminUI.setBusy(confirmDelete, true, 'Eliminando…');
     try {
-      const result = await AdminUI.request('/api/admin/tribute-types/' + deleteTarget.id, { method: 'DELETE' });
+      const result = await AdminUI.request('/api/v1/admin/tribute-types/' + deleteTarget.id, { method: 'DELETE' });
       AdminUI.closeDialog(dialog);
       AdminUI.notify(result.soft_deleted ? 'El tributo se desactivó para conservar su historial.' : 'Tributo eliminado correctamente.', 'success');
       if (String(byId('id').value) === String(deleteTarget.id)) resetForm();

@@ -172,7 +172,7 @@
         showState(appointmentsState, 'loading', '', 'Cargando próximos turnos...');
         AdminUI.setBusy(reloadButton, true, 'Actualizando...');
         try {
-          const data = await AdminUI.request('/api/admin/dashboard');
+          const data = await AdminUI.request('/api/v1/admin/dashboard');
           const dashboard = data && typeof data === 'object' ? data : {};
           renderMetrics(dashboard.metrics);
           renderAppointments(dashboard.upcoming_appointments);

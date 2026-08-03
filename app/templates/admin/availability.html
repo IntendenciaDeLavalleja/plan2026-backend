@@ -308,8 +308,8 @@
   async function loadReferenceData() {
     try {
       const results = await Promise.all([
-        ui.request('/api/admin/tribute-types?per_page=200&include_inactive=true'),
-        ui.request('/api/admin/locations')
+        ui.request('/api/v1/admin/tribute-types?per_page=200&include_inactive=true'),
+        ui.request('/api/v1/admin/locations')
       ]);
       state.tributes = getItems(results[0]);
       state.locations = getItems(results[1]);
@@ -365,7 +365,7 @@
     if (value('slot-filter-to')) params.set('to', value('slot-filter-to'));
     if (byId('slot-filter-blocked').checked) params.set('only_blocked', 'true');
     try {
-      const data = await ui.request('/api/admin/availability/slots?' + params.toString());
+      const data = await ui.request('/api/v1/admin/availability/slots?' + params.toString());
       state.slots = getItems(data);
       renderSlots(data && data.total);
     } catch (error) {
@@ -432,7 +432,7 @@
     };
     ui.setBusy(button, true, 'Guardando…');
     try {
-      await ui.request('/api/admin/availability/slots/' + value('slot-id'), { method: 'PATCH', body: payload });
+      await ui.request('/api/v1/admin/availability/slots/' + value('slot-id'), { method: 'PATCH', body: payload });
       ui.closeDialog(byId('slot-dialog'));
       ui.notify('Horario actualizado.', 'success');
       await loadSlots();
@@ -446,7 +446,7 @@
   async function toggleSlot(slot, button) {
     if (button) ui.setBusy(button, true, slot.is_blocked ? 'Desbloqueando…' : 'Bloqueando…');
     try {
-      await ui.request('/api/admin/availability/slots/' + slot.id, {
+      await ui.request('/api/v1/admin/availability/slots/' + slot.id, {
         method: 'PATCH',
         body: { is_blocked: !slot.is_blocked, block_reason: slot.is_blocked ? null : (slot.block_reason || 'Bloqueado desde el panel') }
       });
@@ -486,7 +486,7 @@
 
   function confirmDeleteSlot(slot, trigger) {
     openConfirm('Eliminar horario', '¿Querés eliminar este horario?', 'No se puede eliminar si tiene reservas activas.', 'Eliminar horario', async () => {
-      await ui.request('/api/admin/availability/slots/' + slot.id, { method: 'DELETE' });
+      await ui.request('/api/v1/admin/availability/slots/' + slot.id, { method: 'DELETE' });
       ui.notify('Horario eliminado.', 'success');
       await loadSlots();
     }, trigger);
@@ -631,7 +631,7 @@
     ui.setBusy(button, true, 'Creando horarios…');
     ui.clearNotice('bulk-notice');
     try {
-      const data = await ui.request('/api/admin/availability/slots/bulk-generate', { method: 'POST', body: payload });
+      const data = await ui.request('/api/v1/admin/availability/slots/bulk-generate', { method: 'POST', body: payload });
       const count = data && data.created_slots != null ? data.created_slots : 0;
       ui.notify('Se crearon ' + count + ' horarios.', 'success', 'bulk-notice');
       await loadSlots();
@@ -645,7 +645,7 @@
   async function loadRules() {
     setDataState('rules', 'loading', 'Cargando reglas…');
     try {
-      const data = await ui.request('/api/admin/availability/rules?per_page=200');
+      const data = await ui.request('/api/v1/admin/availability/rules?per_page=200');
       state.rules = getItems(data);
       renderRules();
     } catch (error) {
@@ -734,7 +734,7 @@
     };
     ui.setBusy(button, true, id ? 'Guardando…' : 'Creando…');
     try {
-      const saved = await ui.request(id ? '/api/admin/availability/rules/' + id : '/api/admin/availability/rules', { method: id ? 'PATCH' : 'POST', body: payload });
+      const saved = await ui.request(id ? '/api/v1/admin/availability/rules/' + id : '/api/v1/admin/availability/rules', { method: id ? 'PATCH' : 'POST', body: payload });
       ui.closeDialog(byId('rule-dialog'));
       await loadRules();
       if (id) ui.notify('Regla actualizada.', 'success', 'rule-notice');
@@ -758,7 +758,7 @@
   async function generateRule(rule, button) {
     if (button) ui.setBusy(button, true, 'Generando…');
     try {
-      const data = await ui.request('/api/admin/availability/rules/' + rule.id + '/generate-slots', { method: 'POST' });
+      const data = await ui.request('/api/v1/admin/availability/rules/' + rule.id + '/generate-slots', { method: 'POST' });
       const count = data && data.created_slots != null ? data.created_slots : 0;
       ui.notify('Se generaron ' + count + ' horarios. Si el resultado fue 0, probablemente ya existían.', 'success', 'rule-notice');
       await loadSlots();
@@ -771,7 +771,7 @@
 
   function confirmDeleteRule(rule, trigger) {
     openConfirm('Eliminar regla', '¿Querés eliminar “' + (rule.name || 'esta regla') + '”?', 'La regla se elimina, pero los horarios que ya generó permanecen sin cambios.', 'Eliminar regla', async () => {
-      await ui.request('/api/admin/availability/rules/' + rule.id, { method: 'DELETE' });
+      await ui.request('/api/v1/admin/availability/rules/' + rule.id, { method: 'DELETE' });
       ui.notify('Regla eliminada. Los horarios generados se conservaron.', 'success', 'rule-notice');
       await loadRules();
     }, trigger);
@@ -792,7 +792,7 @@
     const payload = { date: value('block-date'), tribute_type_id: numberOrNull('block-tribute'), reason: value('block-reason') };
     ui.setBusy(button, true, 'Bloqueando…');
     try {
-      const data = await ui.request('/api/admin/availability/slots/block', { method: 'POST', body: payload });
+      const data = await ui.request('/api/v1/admin/availability/slots/block', { method: 'POST', body: payload });
       const count = data && data.blocked != null ? data.blocked : 0;
       ui.closeDialog(byId('block-date-dialog'));
       ui.notify('Se bloquearon ' + count + ' horarios.', count ? 'success' : 'warning');
@@ -807,7 +807,7 @@
   async function loadHolidays() {
     setDataState('holidays', 'loading', 'Cargando días…');
     try {
-      state.holidays = getItems(await ui.request('/api/admin/availability/holidays'));
+      state.holidays = getItems(await ui.request('/api/v1/admin/availability/holidays'));
       renderHolidays();
     } catch (error) {
       setDataState('holidays', 'error', error.message);
@@ -838,7 +838,7 @@
     const button = byId('holiday-submit');
     ui.setBusy(button, true, 'Agregando…');
     try {
-      await ui.request('/api/admin/availability/holidays', { method: 'POST', body: { date: value('holiday-date'), reason: value('holiday-reason') || null, is_full_day: true } });
+      await ui.request('/api/v1/admin/availability/holidays', { method: 'POST', body: { date: value('holiday-date'), reason: value('holiday-reason') || null, is_full_day: true } });
       event.currentTarget.reset();
       ui.notify('Día no laborable agregado.', 'success', 'holiday-notice');
       await Promise.all([loadHolidays(), loadSlots()]);
@@ -851,7 +851,7 @@
 
   function confirmDeleteHoliday(holiday, trigger) {
     openConfirm('Eliminar día no laborable', '¿Querés habilitar nuevamente el ' + ui.formatDateLong(holiday.date) + '?', 'Eliminar este registro no desbloquea automáticamente horarios individuales que se hayan bloqueado antes.', 'Eliminar día', async () => {
-      await ui.request('/api/admin/availability/holidays/' + holiday.id, { method: 'DELETE' });
+      await ui.request('/api/v1/admin/availability/holidays/' + holiday.id, { method: 'DELETE' });
       ui.notify('Día no laborable eliminado.', 'success', 'holiday-notice');
       await Promise.all([loadHolidays(), loadSlots()]);
     }, trigger);

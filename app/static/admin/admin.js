@@ -49,23 +49,47 @@
 
   async function request(url, options) {
     const config = Object.assign({ credentials: 'same-origin' }, options || {});
+    config.headers = Object.assign({ Accept: 'application/json' }, config.headers || {});
     if (config.body && !(config.body instanceof FormData)) {
-      config.headers = Object.assign({ 'Content-Type': 'application/json' }, config.headers || {});
+      config.headers = Object.assign({ 'Content-Type': 'application/json' }, config.headers);
       if (typeof config.body !== 'string') config.body = JSON.stringify(config.body);
     }
     let response;
     try {
       response = await fetch(url, config);
     } catch (error) {
+      console.error('Error de red en la API administrativa.', { url: url, message: error && error.message });
       const networkError = new Error('No se pudo conectar con el sistema. Revisá la conexión e intentá nuevamente.');
       networkError.code = 'network_error';
       throw networkError;
     }
+
+    const contentType = response.headers.get('content-type') || '';
+    const rawBody = await response.text();
+    if (!contentType.includes('application/json')) {
+      console.error('Respuesta no JSON recibida de la API administrativa.', {
+        url: response.url,
+        status: response.status,
+        contentType: contentType,
+        bodyPreview: rawBody.slice(0, 500)
+      });
+      const contentError = new Error('El servidor respondió ' + response.status + ' con contenido no JSON.');
+      contentError.status = response.status;
+      throw contentError;
+    }
+
     let json;
     try {
-      json = await response.json();
+      json = rawBody ? JSON.parse(rawBody) : null;
     } catch (error) {
-      throw new Error('El sistema devolvió una respuesta que no se pudo interpretar.');
+      console.error('Respuesta JSON inválida de la API administrativa.', {
+        url: response.url,
+        status: response.status,
+        bodyPreview: rawBody.slice(0, 500)
+      });
+      const parseError = new Error('El servidor devolvió una respuesta JSON inválida.');
+      parseError.status = response.status;
+      throw parseError;
     }
     if (!response.ok || !json.ok) {
       const apiError = new Error(errorMessage(json, 'No se pudo completar la operación.'));
