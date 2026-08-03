@@ -4,9 +4,9 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
-def _csv(name: str, default: str = "") -> list:
+def _origins(name: str, default: str = "") -> list[str]:
     raw = os.environ.get(name, default) or ""
-    return [item.strip() for item in raw.split(",") if item.strip()]
+    return [item.strip().rstrip("/") for item in raw.split(",") if item.strip()]
 
 
 class Config:
@@ -35,7 +35,7 @@ class Config:
 
     # Frontend & CORS
     FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:5173")
-    CORS_ORIGINS = _csv("CORS_ORIGINS", "http://localhost:5173,http://localhost:5174,http://127.0.0.1:5173")
+    CORS_ALLOWED_ORIGINS = _origins("CORS_ALLOWED_ORIGINS", "https://plan2026.lavalleja.uy")
 
     # Reservation code prefix
     RESERVATION_CODE_PREFIX = os.environ.get("RESERVATION_CODE_PREFIX", "IDL-AF")

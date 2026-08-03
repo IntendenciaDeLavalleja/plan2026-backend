@@ -27,14 +27,21 @@ def create_app(config_class: type = Config) -> Flask:
             x_host=1,
         )
 
-    # CORS – only the configured frontend origin(s) can call our JSON API
+    # CORS applies to the versioned public and administrative API, including errors.
     cors.init_app(
         app,
-        resources={r"/api/*": {"origins": app.config["CORS_ORIGINS"]}},
+        resources={r"/api/v1/*": {"origins": app.config["CORS_ALLOWED_ORIGINS"]}},
         supports_credentials=True,
-        allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
+        allow_headers=["Content-Type", "Authorization", "Accept", "X-Requested-With"],
         methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        vary_header=True,
     )
+
+    @app.after_request
+    def _vary_api_by_origin(response):
+        if request.path.startswith("/api/v1/"):
+            response.vary.add("Origin")
+        return response
 
     # Init extensions
     db.init_app(app)
@@ -59,7 +66,7 @@ def create_app(config_class: type = Config) -> Flask:
 
     @login_manager.unauthorized_handler
     def _on_unauthorized():
-        if request.path.startswith("/api/"):
+        if request.path.startswith("/api/v1/"):
             return _unauthorized()
         return redirect(url_for("admin_ui.login_page"))
 
@@ -89,14 +96,14 @@ def create_app(config_class: type = Config) -> Flask:
     csrf.exempt(admin_access_bp)
     csrf.exempt(admin_ui_bp)
 
-    app.register_blueprint(public_bp, url_prefix="/api/public")
-    app.register_blueprint(admin_auth_bp, url_prefix="/api/admin/auth")
-    app.register_blueprint(admin_dashboard_bp, url_prefix="/api/admin")
-    app.register_blueprint(admin_tribute_types_bp, url_prefix="/api/admin/tribute-types")
-    app.register_blueprint(admin_availability_bp, url_prefix="/api/admin/availability")
-    app.register_blueprint(admin_appointments_bp, url_prefix="/api/admin/appointments")
-    app.register_blueprint(admin_locations_bp, url_prefix="/api/admin/locations")
-    app.register_blueprint(admin_access_bp, url_prefix="/api/admin/access")
+    app.register_blueprint(public_bp, url_prefix="/api/v1/public")
+    app.register_blueprint(admin_auth_bp, url_prefix="/api/v1/admin/auth")
+    app.register_blueprint(admin_dashboard_bp, url_prefix="/api/v1/admin")
+    app.register_blueprint(admin_tribute_types_bp, url_prefix="/api/v1/admin/tribute-types")
+    app.register_blueprint(admin_availability_bp, url_prefix="/api/v1/admin/availability")
+    app.register_blueprint(admin_appointments_bp, url_prefix="/api/v1/admin/appointments")
+    app.register_blueprint(admin_locations_bp, url_prefix="/api/v1/admin/locations")
+    app.register_blueprint(admin_access_bp, url_prefix="/api/v1/admin/access")
     app.register_blueprint(admin_ui_bp)
 
     # Register CLI commands

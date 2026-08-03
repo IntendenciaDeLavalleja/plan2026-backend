@@ -31,43 +31,41 @@ flask run
 ## Endpoints
 
 ### Públicos
-- `GET  /api/public/tribute-types`
-- `GET  /api/public/tribute-types/<id>`
-- `GET  /api/public/locations`
-- `GET  /api/public/availability?tribute_type_id=&from=&to=&days=`
-- `GET  /api/public/slots?tribute_type_id=&date=`
-- `POST /api/public/appointments`
-- `GET  /api/public/appointments/<code>?document=…`
-- `POST /api/public/appointments/<code>/cancel`
+- `GET  /api/v1/public/tribute-types`
+- `GET  /api/v1/public/tribute-types/<id>`
+- `GET  /api/v1/public/locations`
+- `GET  /api/v1/public/availability?tribute_type_id=&from=&to=&days=`
+- `GET  /api/v1/public/slots?tribute_type_id=&date=`
+- `POST /api/v1/public/appointments`
+- `GET  /api/v1/public/appointments/<code>?document=…`
+- `POST /api/v1/public/appointments/<code>/cancel`
 
 ### Administración (requiere sesión)
-- `GET  /api/admin/auth/captcha`
-- `POST /api/admin/auth/login`
-- `POST /api/admin/auth/verify-2fa`
-- `POST /api/admin/auth/logout`
-- `GET  /api/admin/auth/me`
-- `GET  /api/admin/dashboard`
-- `GET  /api/admin/tribute-types`
-- `POST /api/admin/tribute-types`
-- `PATCH/DELETE /api/admin/tribute-types/<id>`
-- `GET/POST /api/admin/availability/rules`
-- `GET/PATCH/DELETE /api/admin/availability/rules/<id>`
-- `POST /api/admin/availability/rules/<id>/generate-slots`
-- `GET /api/admin/availability/slots`
-- `PATCH/DELETE /api/admin/availability/slots/<id>`
-- `POST /api/admin/availability/slots/bulk-generate`
-- `POST /api/admin/availability/slots/block`
-- `GET/POST /api/admin/availability/holidays`
-- `DELETE /api/admin/availability/holidays/<id>`
-- `GET/POST /api/admin/locations`
-- `PATCH/DELETE /api/admin/locations/<id>`
-- `GET /api/admin/appointments`
-- `GET/PATCH /api/admin/appointments/<id>`
-- `POST /api/admin/appointments/<id>/cancel`
-- `POST /api/admin/appointments/<id>/reschedule`
-- `GET /api/admin/appointments/status-options`
-- `GET /api/admin/settings`
-- `GET/PUT /api/admin/settings/<key>`
+- `GET  /api/v1/admin/auth/captcha`
+- `POST /api/v1/admin/auth/login`
+- `POST /api/v1/admin/auth/verify-2fa`
+- `POST /api/v1/admin/auth/logout`
+- `GET  /api/v1/admin/auth/me`
+- `GET  /api/v1/admin/dashboard`
+- `GET  /api/v1/admin/tribute-types`
+- `POST /api/v1/admin/tribute-types`
+- `PATCH/DELETE /api/v1/admin/tribute-types/<id>`
+- `GET/POST /api/v1/admin/availability/rules`
+- `GET/PATCH/DELETE /api/v1/admin/availability/rules/<id>`
+- `POST /api/v1/admin/availability/rules/<id>/generate-slots`
+- `GET /api/v1/admin/availability/slots`
+- `PATCH/DELETE /api/v1/admin/availability/slots/<id>`
+- `POST /api/v1/admin/availability/slots/bulk-generate`
+- `POST /api/v1/admin/availability/slots/block`
+- `GET/POST /api/v1/admin/availability/holidays`
+- `DELETE /api/v1/admin/availability/holidays/<id>`
+- `GET/POST /api/v1/admin/locations`
+- `PATCH/DELETE /api/v1/admin/locations/<id>`
+- `GET /api/v1/admin/appointments`
+- `GET/PATCH /api/v1/admin/appointments/<id>`
+- `POST /api/v1/admin/appointments/<id>/cancel`
+- `POST /api/v1/admin/appointments/<id>/reschedule`
+- `GET /api/v1/admin/appointments/status-options`
 
 ## Modelos principales
 
@@ -83,7 +81,7 @@ flask run
 
 ## Reglas de negocio críticas
 
-- **Overbooking**: el endpoint `POST /api/public/appointments` usa
+- **Overbooking**: el endpoint `POST /api/v1/public/appointments` usa
   `SELECT … FOR UPDATE` + incremento atómico de `reserved_count` para
   impedir que dos vecinos obtengan el mismo turno.
 - **Anticipación**: configurable vía `min_anticipation_hours` y
