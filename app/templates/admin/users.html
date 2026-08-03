@@ -1,0 +1,138 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Usuarios{% endblock %}
+{% block eyebrow %}Control de acceso{% endblock %}
+{% block page_title %}Usuarios administrativos{% endblock %}
+{% block page_description %}Creá cuentas y asigná permisos administrativos al personal autorizado.{% endblock %}
+{% block page_actions %}<button class="admin-button admin-button-secondary" type="button" id="reload">Actualizar listado</button>{% endblock %}
+
+{% block content %}
+  <div class="admin-grid admin-grid-2">
+    <section class="admin-card" aria-labelledby="create-title">
+      <div class="admin-card-header"><div><h2 id="create-title">Nuevo usuario</h2><p id="form-help">La contraseña debe tener al menos 12 caracteres.</p></div></div>
+      <div id="form-notice" class="admin-alert" hidden role="status" aria-live="polite"></div>
+      <form id="user-form" class="admin-stack" novalidate>
+        <div class="admin-field"><label for="username">Usuario</label><input class="admin-input" id="username" required maxlength="64" autocomplete="off" /></div>
+        <div class="admin-field"><label for="email">Correo electrónico</label><input class="admin-input" id="email" type="email" required maxlength="120" autocomplete="email" /></div>
+        <div class="admin-field"><label for="full-name">Nombre completo</label><input class="admin-input" id="full-name" maxlength="120" autocomplete="name" /></div>
+        <div class="admin-field"><label for="password">Contraseña</label><input class="admin-input" id="password" type="password" minlength="12" required autocomplete="new-password" /></div>
+        <label class="admin-check" for="is-superuser"><input id="is-superuser" type="checkbox" /><span><strong>Superadministrador</strong><small>También podrá crear usuarios y consultar todos los logs.</small></span></label>
+        <label class="admin-check" for="is-active"><input id="is-active" type="checkbox" checked /><span><strong>Usuario activo</strong><small>Los usuarios deshabilitados no pueden iniciar sesión.</small></span></label>
+        <div class="admin-actions"><button class="admin-button" type="submit" id="save-button">Crear usuario</button><button class="admin-button admin-button-secondary" type="button" id="cancel-edit" hidden>Cancelar edición</button></div>
+      </form>
+    </section>
+    <section class="admin-card" aria-labelledby="list-title">
+      <div class="admin-card-header"><div><h2 id="list-title">Cuentas registradas</h2><p>Estado y permisos de cada usuario administrativo.</p></div></div>
+      <div class="admin-table-region" tabindex="0" aria-label="Usuarios administrativos">
+        <table class="admin-table"><caption>Usuarios del panel administrativo</caption><thead><tr><th>Usuario</th><th>Correo</th><th>Rol</th><th>Estado</th><th>Acciones</th></tr></thead><tbody id="rows"><tr><td colspan="5"><div class="admin-loading">Cargando usuarios...</div></td></tr></tbody></table>
+      </div>
+    </section>
+  </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  'use strict';
+  const rows = document.getElementById('rows');
+  const notice = document.getElementById('form-notice');
+  const form = document.getElementById('user-form');
+  const reload = document.getElementById('reload');
+  function cell(row, value) { const td = document.createElement('td'); td.textContent = value || 'Sin dato'; row.appendChild(td); }
+  async function load() {
+    rows.innerHTML = '<tr><td colspan="5"><div class="admin-loading">Cargando usuarios...</div></td></tr>';
+    try {
+      const result = await AdminUI.request('/api/admin/access/users?per_page=100');
+      rows.innerHTML = '';
+      result.items.forEach(function (user) {
+        const row = document.createElement('tr');
+        cell(row, user.full_name ? user.full_name + ' (' + user.username + ')' : user.username);
+        cell(row, user.email);
+        cell(row, user.is_superuser ? 'Superadministrador' : 'Administrador');
+        cell(row, user.is_active ? 'Activo' : 'Deshabilitado');
+        const actions = document.createElement('td');
+        const editButton = document.createElement('button');
+        editButton.className = 'admin-button admin-button-secondary admin-button-small';
+        editButton.type = 'button';
+        editButton.textContent = 'Editar usuario';
+        editButton.addEventListener('click', function () { startEdit(user); });
+        actions.appendChild(editButton);
+        if (user.id !== {{ user.id|tojson }}) {
+          const deleteButton = document.createElement('button');
+          deleteButton.className = 'admin-button admin-button-danger admin-button-small';
+          deleteButton.type = 'button';
+          deleteButton.textContent = 'Eliminar';
+          deleteButton.addEventListener('click', async function () {
+            if (!window.confirm('¿Eliminar la cuenta de ' + user.username + '? Esta acción no se puede deshacer.')) return;
+            try {
+              await AdminUI.request('/api/admin/access/users/' + user.id, { method: 'DELETE' });
+              AdminUI.notify('Usuario eliminado.', 'success');
+              await load();
+            } catch (error) { AdminUI.notify(error.message, 'error'); }
+          });
+          actions.appendChild(deleteButton);
+        }
+        row.appendChild(actions);
+        rows.appendChild(row);
+      });
+      if (!result.items.length) rows.innerHTML = '<tr><td colspan="5">No hay usuarios registrados.</td></tr>';
+    } catch (error) { rows.innerHTML = '<tr><td colspan="5">' + error.message + '</td></tr>'; }
+  }
+  let editingId = null;
+  const cancelEdit = document.getElementById('cancel-edit');
+  function startEdit(user) {
+    editingId = user.id;
+    document.getElementById('create-title').textContent = 'Editar usuario';
+    document.getElementById('form-help').textContent = 'Dejá la contraseña vacía para conservar la actual.';
+    document.getElementById('username').value = user.username;
+    document.getElementById('email').value = user.email;
+    document.getElementById('full-name').value = user.full_name || '';
+    document.getElementById('password').value = '';
+    document.getElementById('password').required = false;
+    document.getElementById('is-superuser').checked = user.is_superuser;
+    document.getElementById('is-active').checked = user.is_active;
+    document.getElementById('save-button').textContent = 'Guardar cambios';
+    cancelEdit.hidden = false;
+    document.getElementById('username').focus();
+  }
+  function resetForm() {
+    editingId = null;
+    form.reset();
+    document.getElementById('is-active').checked = true;
+    document.getElementById('create-title').textContent = 'Nuevo usuario';
+    document.getElementById('form-help').textContent = 'La contraseña debe tener al menos 12 caracteres.';
+    document.getElementById('password').required = true;
+    document.getElementById('save-button').textContent = 'Crear usuario';
+    cancelEdit.hidden = true;
+  }
+  form.addEventListener('submit', async function (event) {
+    event.preventDefault();
+    AdminUI.clearNotice(notice);
+    const button = document.getElementById('save-button');
+    AdminUI.setBusy(button, true, editingId ? 'Guardando...' : 'Creando...');
+    try {
+      const payload = {
+        username: document.getElementById('username').value,
+        email: document.getElementById('email').value,
+        full_name: document.getElementById('full-name').value,
+        password: document.getElementById('password').value,
+        is_superuser: document.getElementById('is-superuser').checked,
+        is_active: document.getElementById('is-active').checked
+      };
+      if (editingId) {
+        await AdminUI.request('/api/admin/access/users/' + editingId, { method: 'PATCH', body: payload });
+      } else {
+        await AdminUI.request('/api/admin/access/users', { method: 'POST', body: payload });
+      }
+      AdminUI.notify(editingId ? 'Usuario actualizado correctamente.' : 'Usuario creado correctamente.', 'success', notice);
+      resetForm();
+      await load();
+    } catch (error) { AdminUI.notify(error.message, 'error', notice); }
+    finally { AdminUI.setBusy(button, false); }
+  });
+  cancelEdit.addEventListener('click', resetForm);
+  reload.addEventListener('click', load);
+  load();
+}());
+</script>
+{% endblock %}

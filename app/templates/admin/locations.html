@@ -1,0 +1,255 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Sedes{% endblock %}
+{% block eyebrow %}Organización territorial{% endblock %}
+{% block page_title %}Sedes{% endblock %}
+{% block page_description %}Administrá las oficinas disponibles para la atención presencial.{% endblock %}
+{% block page_actions %}<button class="admin-button admin-button-secondary" type="button" id="reload">Actualizar listado</button>{% endblock %}
+
+{% block content %}
+  <div class="admin-grid admin-grid-2">
+    <section class="admin-card" aria-labelledby="form-title">
+      <div class="admin-card-header">
+        <div><h2 id="form-title">Nueva sede</h2><p id="form-description">Ingresá los datos de contacto y atención.</p></div>
+      </div>
+      <div id="form-notice" class="admin-alert" hidden role="status" aria-live="polite"></div>
+      <form id="location-form" class="admin-stack" aria-describedby="form-description" novalidate>
+        <input type="hidden" id="id" />
+        <fieldset class="admin-form-section">
+          <legend>Datos de la sede</legend>
+          <p class="admin-form-section-description">Esta información identifica la oficina en la agenda.</p>
+          <div class="admin-form-grid">
+            <div class="admin-field admin-field-full">
+              <label for="name">Nombre <span class="admin-required" aria-hidden="true">*</span></label>
+              <input class="admin-input" id="name" name="name" required minlength="2" maxlength="120" aria-describedby="name-help" />
+              <span class="admin-help" id="name-help">Nombre público de la oficina o local.</span>
+            </div>
+            <div class="admin-field admin-field-full">
+              <label for="address">Dirección</label>
+              <textarea class="admin-textarea" id="address" name="address" aria-describedby="address-help"></textarea>
+              <span class="admin-help" id="address-help">Incluí calle, número y localidad cuando corresponda.</span>
+            </div>
+            <div class="admin-field admin-field-full">
+              <label for="phone">Teléfono</label>
+              <input class="admin-input" id="phone" name="phone" type="tel" aria-describedby="phone-help" />
+              <span class="admin-help" id="phone-help">Número de contacto de la sede.</span>
+            </div>
+            <label class="admin-check admin-field-full" for="is_active">
+              <input id="is_active" name="is_active" type="checkbox" checked />
+              <span><strong>Sede activa</strong><small>Puede utilizarse para organizar nueva disponibilidad.</small></span>
+            </label>
+          </div>
+        </fieldset>
+        <div class="admin-actions">
+          <button class="admin-button" type="submit" id="save-button">Guardar sede</button>
+          <button class="admin-button admin-button-secondary" type="button" id="reset-form">Restablecer formulario</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="admin-card" aria-labelledby="list-title">
+      <div class="admin-card-header"><div><h2 id="list-title">Sedes registradas</h2><p>Consultá y actualizá los puntos de atención.</p></div></div>
+      <div class="admin-table-region" tabindex="0" aria-label="Sedes registradas, tabla desplazable horizontalmente">
+        <table class="admin-table">
+          <caption>Oficinas configuradas en el sistema</caption>
+          <thead><tr><th scope="col">Sede</th><th scope="col">Contacto</th><th scope="col">Estado</th><th scope="col">Acciones</th></tr></thead>
+          <tbody id="rows"><tr><td colspan="4"><div class="admin-loading" role="status">Cargando sedes…</div></td></tr></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <dialog class="admin-dialog" id="delete-dialog" aria-labelledby="delete-title" aria-describedby="delete-description">
+    <form class="admin-dialog-form" method="dialog" id="delete-form">
+      <header class="admin-dialog-header">
+        <div><h2 id="delete-title">Eliminar sede</h2><p>Esta acción no se puede deshacer.</p></div>
+        <button class="admin-dialog-close" type="button" data-dialog-close aria-label="Cerrar">×</button>
+      </header>
+      <div class="admin-dialog-body admin-stack-sm">
+        <p>Vas a eliminar <strong id="delete-name"></strong>.</p>
+        <p class="admin-muted" id="delete-description">La sede dejará de estar disponible y esta operación puede afectar referencias históricas de turnos y disponibilidad. Verificá que no sea necesaria para consultar el historial antes de continuar.</p>
+        <div id="delete-notice" class="admin-alert" hidden role="alert"></div>
+      </div>
+      <footer class="admin-dialog-footer">
+        <button class="admin-button admin-button-secondary" type="button" data-dialog-close>Cancelar</button>
+        <button class="admin-button admin-button-danger" type="submit" id="confirm-delete">Eliminar sede</button>
+      </footer>
+    </form>
+  </dialog>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  'use strict';
+  const form = document.getElementById('location-form');
+  const rows = document.getElementById('rows');
+  const saveButton = document.getElementById('save-button');
+  const reloadButton = document.getElementById('reload');
+  const dialog = document.getElementById('delete-dialog');
+  const deleteForm = document.getElementById('delete-form');
+  const confirmDelete = document.getElementById('confirm-delete');
+  const byId = (id) => document.getElementById(id);
+  let items = [];
+  let deleteTarget = null;
+  let loading = false;
+  let submitting = false;
+
+  function appendCell(row, content) {
+    const td = document.createElement('td');
+    if (typeof content === 'string') td.textContent = content;
+    else if (content) td.appendChild(content);
+    row.appendChild(td);
+    return td;
+  }
+
+  function resetForm() {
+    form.reset();
+    byId('id').value = '';
+    byId('is_active').checked = true;
+    byId('form-title').textContent = 'Nueva sede';
+    byId('form-description').textContent = 'Ingresá los datos de contacto y atención.';
+    saveButton.textContent = 'Guardar sede';
+    AdminUI.clearNotice('form-notice');
+  }
+
+  function editItem(item) {
+    byId('id').value = item.id || '';
+    byId('name').value = item.name || '';
+    byId('address').value = item.address || '';
+    byId('phone').value = item.phone || '';
+    byId('is_active').checked = item.is_active !== false;
+    byId('form-title').textContent = 'Editar sede';
+    byId('form-description').textContent = 'Actualizá los datos de la sede seleccionada.';
+    saveButton.textContent = 'Guardar cambios';
+    AdminUI.clearNotice('form-notice');
+    byId('form-title').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    byId('name').focus({ preventScroll: true });
+  }
+
+  function render() {
+    rows.replaceChildren();
+    if (!items.length) {
+      const tr = document.createElement('tr');
+      const td = appendCell(tr);
+      td.colSpan = 4;
+      const state = document.createElement('div');
+      state.className = 'admin-empty';
+      const title = document.createElement('strong');
+      title.textContent = 'No hay sedes registradas';
+      const help = document.createElement('span');
+      help.textContent = 'Creá la primera sede con el formulario.';
+      state.append(title, help);
+      td.appendChild(state);
+      rows.appendChild(tr);
+      return;
+    }
+    items.forEach((item) => {
+      const tr = document.createElement('tr');
+      const identity = document.createElement('div');
+      const title = document.createElement('strong');
+      title.textContent = item.name || 'Sin nombre';
+      const address = document.createElement('div');
+      address.className = 'admin-muted';
+      address.textContent = item.address || 'Sin dirección';
+      identity.append(title, address);
+      appendCell(tr, identity);
+      appendCell(tr, item.phone || 'Sin teléfono');
+      const badge = document.createElement('span');
+      badge.className = 'admin-badge ' + (item.is_active ? 'admin-badge-success' : 'admin-badge-warning');
+      badge.textContent = item.is_active ? 'Activa' : 'Inactiva';
+      appendCell(tr, badge);
+      const actions = document.createElement('div');
+      actions.className = 'admin-row-actions';
+      const edit = document.createElement('button');
+      edit.type = 'button';
+      edit.className = 'admin-button admin-button-secondary admin-button-small';
+      edit.textContent = 'Editar';
+      edit.addEventListener('click', () => editItem(item));
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'admin-button admin-button-danger admin-button-small';
+      remove.textContent = 'Eliminar';
+      remove.addEventListener('click', () => {
+        deleteTarget = item;
+        byId('delete-name').textContent = item.name || 'esta sede';
+        AdminUI.clearNotice('delete-notice');
+        AdminUI.openDialog(dialog, remove);
+      });
+      actions.append(edit, remove);
+      appendCell(tr, actions);
+      rows.appendChild(tr);
+    });
+  }
+
+  async function load() {
+    if (loading) return;
+    loading = true;
+    AdminUI.setBusy(reloadButton, true, 'Actualizando…');
+    rows.innerHTML = '<tr><td colspan="4"><div class="admin-loading" role="status">Cargando sedes…</div></td></tr>';
+    try {
+      items = await AdminUI.request('/api/admin/locations');
+      render();
+    } catch (error) {
+      rows.innerHTML = '<tr><td colspan="4"><div class="admin-error-state"><strong>No se pudo cargar el listado</strong><span>Intentá actualizar nuevamente.</span></div></td></tr>';
+      AdminUI.notify(error.message, 'error');
+    } finally {
+      loading = false;
+      AdminUI.setBusy(reloadButton, false);
+    }
+  }
+
+  form.addEventListener('submit', async function (event) {
+    event.preventDefault();
+    if (submitting) return;
+    if (!form.checkValidity()) { form.reportValidity(); return; }
+    submitting = true;
+    AdminUI.clearNotice('form-notice');
+    AdminUI.setBusy(saveButton, true, 'Guardando…');
+    const id = byId('id').value;
+    const payload = {
+      name: byId('name').value,
+      address: byId('address').value,
+      phone: byId('phone').value,
+      is_active: byId('is_active').checked
+    };
+    try {
+      await AdminUI.request(id ? '/api/admin/locations/' + id : '/api/admin/locations', {
+        method: id ? 'PATCH' : 'POST', body: payload
+      });
+      AdminUI.notify(id ? 'Sede actualizada correctamente.' : 'Sede creada correctamente.', 'success');
+      resetForm();
+      await load();
+    } catch (error) {
+      AdminUI.notify(error.message, 'error', 'form-notice');
+    } finally {
+      submitting = false;
+      AdminUI.setBusy(saveButton, false);
+      if (!byId('id').value) saveButton.textContent = 'Guardar sede';
+    }
+  });
+
+  deleteForm.addEventListener('submit', async function (event) {
+    event.preventDefault();
+    if (!deleteTarget || confirmDelete.disabled) return;
+    AdminUI.setBusy(confirmDelete, true, 'Eliminando…');
+    try {
+      await AdminUI.request('/api/admin/locations/' + deleteTarget.id, { method: 'DELETE' });
+      AdminUI.closeDialog(dialog);
+      AdminUI.notify('Sede eliminada correctamente.', 'success');
+      if (String(byId('id').value) === String(deleteTarget.id)) resetForm();
+      deleteTarget = null;
+      await load();
+    } catch (error) {
+      AdminUI.notify(error.message, 'error', 'delete-notice');
+    } finally {
+      AdminUI.setBusy(confirmDelete, false);
+    }
+  });
+
+  byId('reset-form').addEventListener('click', resetForm);
+  reloadButton.addEventListener('click', load);
+  load();
+}());
+</script>
+{% endblock %}

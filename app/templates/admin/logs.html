@@ -1,0 +1,46 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Logs del sistema{% endblock %}
+{% block eyebrow %}Auditoría y trazabilidad{% endblock %}
+{% block page_title %}Logs del sistema{% endblock %}
+{% block page_description %}Consultá las acciones realizadas por todos los usuarios administrativos.{% endblock %}
+{% block page_actions %}<button class="admin-button admin-button-secondary" type="button" id="reload">Actualizar logs</button><a class="admin-button" href="/api/admin/access/activity-logs.csv">Descargar CSV</a>{% endblock %}
+
+{% block content %}
+  <section class="admin-card" aria-labelledby="logs-title">
+    <div class="admin-card-header"><div><h2 id="logs-title">Actividad registrada</h2><p>Solo los superadministradores pueden consultar esta información.</p></div></div>
+    <div class="admin-table-region" tabindex="0" aria-label="Logs del sistema">
+      <table class="admin-table"><caption>Acciones de usuarios administrativos</caption><thead><tr><th>Fecha</th><th>Usuario</th><th>Acción</th><th>Detalle</th><th>IP</th></tr></thead><tbody id="rows"><tr><td colspan="5"><div class="admin-loading">Cargando logs...</div></td></tr></tbody></table>
+    </div>
+  </section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  'use strict';
+  const rows = document.getElementById('rows');
+  const reload = document.getElementById('reload');
+  function cell(row, value) { const td = document.createElement('td'); td.textContent = value || 'Sin dato'; row.appendChild(td); }
+  async function load() {
+    rows.innerHTML = '<tr><td colspan="5"><div class="admin-loading">Cargando logs...</div></td></tr>';
+    try {
+      const result = await AdminUI.request('/api/admin/access/activity-logs?per_page=100');
+      rows.innerHTML = '';
+      result.items.forEach(function (log) {
+        const row = document.createElement('tr');
+        cell(row, log.timestamp ? new Date(log.timestamp).toLocaleString('es-UY') : 'Sin fecha');
+        cell(row, log.username);
+        cell(row, log.action);
+        cell(row, log.details);
+        cell(row, log.ip_address);
+        rows.appendChild(row);
+      });
+      if (!result.items.length) rows.innerHTML = '<tr><td colspan="5">No hay actividad registrada.</td></tr>';
+    } catch (error) { rows.innerHTML = '<tr><td colspan="5">' + error.message + '</td></tr>'; }
+  }
+  reload.addEventListener('click', load);
+  load();
+}());
+</script>
+{% endblock %}

@@ -1,0 +1,37 @@
+# Entorno virtual
+venv/
+.venv/
+env/
+
+# Variables de entorno y secretos locales
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Flask
+instance/
+
+# Tests y cobertura
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+
+# Herramientas de desarrollo
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# Distribución y logs
+build/
+dist/
+*.egg-info/
+*.log

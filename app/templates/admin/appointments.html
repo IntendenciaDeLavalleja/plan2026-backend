@@ -1,0 +1,421 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Turnos{% endblock %}
+{% block eyebrow %}Agenda de atención{% endblock %}
+{% block page_title %}Turnos{% endblock %}
+{% block page_description %}Buscá, revisá y gestioná las reservas desde un único lugar.{% endblock %}
+{% block page_actions %}
+  <a class="admin-button" href="/admin/registrar-turno">Registrar turno</a>
+{% endblock %}
+
+{% block head %}
+  <style>
+    .appointments-filter-grid { grid-template-columns: minmax(220px, 2fr) repeat(4, minmax(150px, 1fr)); }
+    .appointments-table { min-width: 980px; }
+    .appointments-table td:last-child { width: 290px; }
+    .appointment-person span, .appointment-time span { display: block; margin-top: 3px; }
+    .appointment-detail-grid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(280px, .9fr); gap: 22px; }
+    .appointment-detail-list { margin: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .appointment-detail-list div { min-width: 0; padding: 12px; border: 1px solid var(--admin-border); border-radius: 10px; background: var(--admin-surface-soft); }
+    .appointment-detail-list dt { color: var(--admin-text-muted); font-size: .8rem; }
+    .appointment-detail-list dd { margin: 4px 0 0; font-weight: 700; overflow-wrap: anywhere; }
+    .appointment-dialog-wide { width: min(1040px, calc(100vw - 32px)); }
+    @media (max-width: 1180px) { .appointments-filter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    @media (max-width: 760px) { .appointments-filter-grid, .appointment-detail-grid, .appointment-detail-list { grid-template-columns: 1fr; } }
+  </style>
+{% endblock %}
+
+{% block content %}
+  <section class="admin-card" aria-labelledby="filters-title">
+    <div class="admin-card-header">
+      <div>
+        <h2 id="filters-title">Filtrar reservas</h2>
+        <p>Los filtros se aplican sobre todo el listado.</p>
+      </div>
+    </div>
+    <form id="filter-form" class="admin-toolbar" role="search">
+      <div class="admin-form-grid appointments-filter-grid">
+        <div class="admin-field">
+          <label for="search">Buscar</label>
+          <input class="admin-input" id="search" name="search" type="search" placeholder="Nombre, cédula, email o código" />
+        </div>
+        <div class="admin-field">
+          <label for="status">Estado</label>
+          <select class="admin-select" id="status" name="status"><option value="">Todos</option></select>
+        </div>
+        <div class="admin-field">
+          <label for="tribute_type_id">Tributo</label>
+          <select class="admin-select" id="tribute_type_id" name="tribute_type_id"><option value="">Todos</option></select>
+        </div>
+        <div class="admin-field">
+          <label for="from">Desde</label>
+          <input class="admin-input" id="from" name="from" type="date" />
+        </div>
+        <div class="admin-field">
+          <label for="to">Hasta</label>
+          <input class="admin-input" id="to" name="to" type="date" />
+        </div>
+      </div>
+      <div class="admin-toolbar-actions" style="margin-top: 14px;">
+        <button class="admin-button" id="apply-filters" type="submit">Aplicar filtros</button>
+        <button class="admin-button admin-button-secondary" id="clear-filters" type="button">Limpiar</button>
+      </div>
+    </form>
+  </section>
+
+  <section class="admin-card" aria-labelledby="list-title">
+    <div class="admin-card-header">
+      <div>
+        <h2 id="list-title">Reservas</h2>
+        <p id="result-summary" aria-live="polite">Cargando reservas...</p>
+      </div>
+      <button class="admin-button admin-button-secondary" id="reload" type="button">Actualizar</button>
+    </div>
+    <div id="list-state" class="admin-loading" role="status">Cargando reservas...</div>
+    <div id="table-wrap" class="admin-table-region" tabindex="0" aria-label="Listado de turnos, desplazable horizontalmente" hidden>
+      <table class="admin-table appointments-table">
+        <caption>Reservas resultantes de los filtros seleccionados</caption>
+        <thead><tr><th scope="col">Reserva</th><th scope="col">Vecino</th><th scope="col">Fecha y hora</th><th scope="col">Estado</th><th scope="col">Acciones</th></tr></thead>
+        <tbody id="appointment-rows"></tbody>
+      </table>
+    </div>
+    <nav id="pager" class="admin-pager" aria-label="Paginación de turnos" hidden>
+      <span id="page-summary" class="admin-muted"></span>
+      <div class="admin-actions">
+        <button class="admin-button admin-button-secondary" id="previous-page" type="button">Anterior</button>
+        <button class="admin-button admin-button-secondary" id="next-page" type="button">Siguiente</button>
+      </div>
+    </nav>
+  </section>
+
+  <dialog class="admin-dialog appointment-dialog-wide" id="detail-dialog" aria-labelledby="detail-title">
+    <form class="admin-dialog-form" id="detail-form">
+      <header class="admin-dialog-header">
+        <div><h2 id="detail-title">Detalle del turno</h2><p id="detail-subtitle"></p></div>
+        <button class="admin-dialog-close" type="button" data-dialog-close aria-label="Cerrar">&times;</button>
+      </header>
+      <div class="admin-dialog-body appointment-detail-grid">
+        <dl class="appointment-detail-list" id="detail-data"></dl>
+        <div class="admin-stack">
+          <div class="admin-field">
+            <label for="detail-status">Estado</label>
+            <select class="admin-select" id="detail-status" required></select>
+          </div>
+          <div class="admin-field">
+            <label for="detail-notes">Notas internas</label>
+            <textarea class="admin-textarea" id="detail-notes" rows="8" placeholder="Solo visibles para el equipo"></textarea>
+          </div>
+          <div id="detail-error" class="admin-alert is-error" hidden role="alert"></div>
+        </div>
+      </div>
+      <footer class="admin-dialog-footer">
+        <button class="admin-button admin-button-secondary" type="button" data-dialog-close>Volver</button>
+        <button class="admin-button" id="save-detail" type="submit">Guardar cambios</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <dialog class="admin-dialog" id="cancel-dialog" aria-labelledby="cancel-title">
+    <form class="admin-dialog-form" id="cancel-form">
+      <header class="admin-dialog-header"><div><h2 id="cancel-title">Cancelar turno</h2><p>Esta acción libera el cupo reservado.</p></div><button class="admin-dialog-close" type="button" data-dialog-close aria-label="Cerrar">&times;</button></header>
+      <div class="admin-dialog-body"><p id="cancel-context"></p><div id="cancel-error" class="admin-alert is-error" hidden role="alert"></div></div>
+      <footer class="admin-dialog-footer"><button class="admin-button admin-button-secondary" type="button" data-dialog-close>Conservar turno</button><button class="admin-button admin-button-danger" id="confirm-cancel" type="submit">Sí, cancelar turno</button></footer>
+    </form>
+  </dialog>
+
+  <dialog class="admin-dialog" id="reschedule-dialog" aria-labelledby="reschedule-title">
+    <form class="admin-dialog-form" id="reschedule-form">
+      <header class="admin-dialog-header"><div><h2 id="reschedule-title">Reprogramar turno</h2><p id="reschedule-context"></p></div><button class="admin-dialog-close" type="button" data-dialog-close aria-label="Cerrar">&times;</button></header>
+      <div class="admin-dialog-body admin-stack">
+        <div class="admin-field"><label for="reschedule-date">Nueva fecha <span class="admin-required">*</span></label><select class="admin-select" id="reschedule-date" required disabled><option value="">Cargando fechas...</option></select></div>
+        <div class="admin-field"><label for="reschedule-slot">Nuevo horario <span class="admin-required">*</span></label><select class="admin-select" id="reschedule-slot" required disabled><option value="">Elegí una fecha</option></select><span class="admin-help">Solo se muestran horarios disponibles para el tributo del turno.</span></div>
+        <div id="reschedule-error" class="admin-alert is-error" hidden role="alert"></div>
+      </div>
+      <footer class="admin-dialog-footer"><button class="admin-button admin-button-secondary" type="button" data-dialog-close>Cancelar</button><button class="admin-button" id="confirm-reschedule" type="submit">Reprogramar</button></footer>
+    </form>
+  </dialog>
+{% endblock %}
+
+{% block scripts %}
+  <script>
+    (function () {
+      'use strict';
+      const ui = window.AdminUI;
+      const form = document.getElementById('filter-form');
+      const rows = document.getElementById('appointment-rows');
+      const tableWrap = document.getElementById('table-wrap');
+      const listState = document.getElementById('list-state');
+      const pager = document.getElementById('pager');
+      const detailDialog = document.getElementById('detail-dialog');
+      const cancelDialog = document.getElementById('cancel-dialog');
+      const rescheduleDialog = document.getElementById('reschedule-dialog');
+      let appointments = [];
+      let tributeTypes = [];
+      let statusOptions = [];
+      let pagination = { page: 1, per_page: 30, total: 0, pages: 0 };
+      let activeAppointment = null;
+      let rescheduleRequest = 0;
+
+      function selectedParams(page) {
+        const params = new URLSearchParams();
+        ['search', 'status', 'tribute_type_id', 'from', 'to'].forEach(function (name) {
+          const value = form.elements[name].value.trim();
+          if (value) params.set(name, value);
+        });
+        params.set('page', String(page || 1));
+        params.set('per_page', String(pagination.per_page));
+        return params;
+      }
+
+      function syncUrl(params) {
+        window.history.replaceState(null, '', window.location.pathname + '?' + params.toString());
+      }
+
+      function tributeName(item) {
+        const tribute = tributeTypes.find(function (entry) { return String(entry.id) === String(item.tribute_type_id); });
+        return tribute ? tribute.name : 'Tributo no disponible';
+      }
+
+      function dateAndTime(item) {
+        if (!item.date) return 'Fecha no disponible';
+        const time = item.start_time ? item.start_time.slice(0, 5) + (item.end_time ? ' a ' + item.end_time.slice(0, 5) : '') : 'Horario no disponible';
+        return ui.formatDate(item.date) + ', ' + time;
+      }
+
+      function renderRows() {
+        rows.innerHTML = appointments.map(function (item) {
+          const canChange = item.status !== 'cancelled';
+          return '<tr>' +
+            '<td><strong class="admin-code">' + ui.escapeHtml(item.reservation_code || 'Sin código') + '</strong><br><span class="admin-muted">' + ui.escapeHtml(tributeName(item)) + '</span></td>' +
+            '<td class="appointment-person"><strong>' + ui.escapeHtml(item.citizen_name || 'Sin nombre') + '</strong><span class="admin-muted">' + ui.escapeHtml(item.citizen_document || 'Sin cédula') + '</span><span class="admin-muted">' + ui.escapeHtml(item.phone || 'Sin teléfono') + '</span></td>' +
+            '<td class="appointment-time"><strong>' + ui.escapeHtml(item.date ? ui.formatDate(item.date) : 'Fecha no disponible') + '</strong><span class="admin-muted">' + ui.escapeHtml(item.start_time ? item.start_time.slice(0, 5) + (item.end_time ? ' - ' + item.end_time.slice(0, 5) : '') : 'Horario no disponible') + '</span></td>' +
+            '<td><span class="admin-badge ' + ui.statusClass(item.status) + '">' + ui.escapeHtml(ui.statusLabel(item.status)) + '</span></td>' +
+            '<td><div class="admin-row-actions"><button class="admin-button admin-button-secondary admin-button-small" type="button" data-view="' + item.id + '">Ver y editar</button>' +
+            (canChange ? '<button class="admin-button admin-button-secondary admin-button-small" type="button" data-reschedule="' + item.id + '">Reprogramar</button><button class="admin-button admin-button-warning admin-button-small" type="button" data-cancel="' + item.id + '">Cancelar</button>' : '') + '</div></td></tr>';
+        }).join('');
+      }
+
+      function renderPagination() {
+        const pages = pagination.pages || 0;
+        document.getElementById('result-summary').textContent = pagination.total === 1 ? '1 reserva encontrada' : pagination.total + ' reservas encontradas';
+        document.getElementById('page-summary').textContent = pages ? 'Página ' + pagination.page + ' de ' + pages : '';
+        document.getElementById('previous-page').disabled = pagination.page <= 1;
+        document.getElementById('next-page').disabled = !pages || pagination.page >= pages;
+        pager.hidden = !pages;
+      }
+
+      function showListState(kind, title, detail) {
+        tableWrap.hidden = true;
+        pager.hidden = true;
+        listState.hidden = false;
+        listState.className = kind === 'loading' ? 'admin-loading' : (kind === 'error' ? 'admin-error-state' : 'admin-empty');
+        listState.innerHTML = (title ? '<strong>' + ui.escapeHtml(title) + '</strong>' : '') + (detail ? '<span>' + ui.escapeHtml(detail) + '</span>' : '');
+      }
+
+      async function loadAppointments(page, updateUrl) {
+        const reload = document.getElementById('reload');
+        showListState('loading', '', 'Cargando reservas...');
+        ui.setBusy(reload, true, 'Actualizando...');
+        try {
+          const params = selectedParams(page);
+          const data = await ui.request('/api/admin/appointments?' + params.toString());
+          appointments = data.items || [];
+          pagination = { page: data.page || 1, per_page: data.per_page || pagination.per_page, total: data.total || 0, pages: data.pages || 0 };
+          if (updateUrl !== false) syncUrl(params);
+          renderPagination();
+          if (!appointments.length) {
+            showListState('empty', 'No hay reservas', 'Probá con otros filtros o registrá un nuevo turno.');
+            return;
+          }
+          renderRows();
+          listState.hidden = true;
+          tableWrap.hidden = false;
+          pager.hidden = false;
+        } catch (error) {
+          document.getElementById('result-summary').textContent = 'No se pudo cargar el listado';
+          showListState('error', 'No pudimos cargar las reservas', error.message);
+        } finally {
+          ui.setBusy(reload, false);
+        }
+      }
+
+      async function loadLookups() {
+        try {
+          const values = await Promise.all([
+            ui.request('/api/admin/appointments/status-options'),
+            ui.request('/api/admin/tribute-types?per_page=200')
+          ]);
+          statusOptions = values[0] || [];
+          tributeTypes = (values[1] && values[1].items) || [];
+          document.getElementById('status').innerHTML = '<option value="">Todos</option>' + statusOptions.map(function (item) { return '<option value="' + ui.escapeHtml(item.value) + '">' + ui.escapeHtml(ui.statusLabel(item.value)) + '</option>'; }).join('');
+          document.getElementById('detail-status').innerHTML = statusOptions.map(function (item) { return '<option value="' + ui.escapeHtml(item.value) + '">' + ui.escapeHtml(ui.statusLabel(item.value)) + '</option>'; }).join('');
+          document.getElementById('tribute_type_id').innerHTML = '<option value="">Todos</option>' + tributeTypes.map(function (item) { return '<option value="' + item.id + '">' + ui.escapeHtml(item.name) + '</option>'; }).join('');
+        } catch (error) {
+          ui.notify(error.message, 'error');
+        }
+      }
+
+      function populateFromUrl() {
+        const params = new URLSearchParams(window.location.search);
+        ['search', 'status', 'tribute_type_id', 'from', 'to'].forEach(function (name) { form.elements[name].value = params.get(name) || ''; });
+        const requestedPerPage = Number(params.get('per_page'));
+        pagination.per_page = requestedPerPage > 0 && requestedPerPage <= 200 ? requestedPerPage : 30;
+        const requestedPage = Number(params.get('page'));
+        return requestedPage > 0 ? requestedPage : 1;
+      }
+
+      function findAppointment(id) {
+        return appointments.find(function (item) { return String(item.id) === String(id); });
+      }
+
+      function detailItem(label, value) {
+        return '<div><dt>' + ui.escapeHtml(label) + '</dt><dd>' + ui.escapeHtml(value || 'No informado') + '</dd></div>';
+      }
+
+      async function openDetail(item, trigger) {
+        activeAppointment = item;
+        document.getElementById('detail-error').hidden = true;
+        document.getElementById('detail-subtitle').textContent = (item.reservation_code || 'Sin código') + ' · ' + dateAndTime(item);
+        document.getElementById('detail-data').innerHTML = detailItem('Vecino', item.citizen_name) + detailItem('Cédula', item.citizen_document) + detailItem('Teléfono', item.phone) + detailItem('Email', item.email) + detailItem('Tributo', tributeName(item)) + detailItem('Fecha y hora', dateAndTime(item)) + detailItem('Referencia', item.reference_value) + detailItem('Comentarios', item.comments);
+        document.getElementById('detail-status').value = item.status || 'reserved';
+        document.getElementById('detail-status').disabled = item.status === 'cancelled';
+        document.getElementById('detail-notes').value = item.internal_notes || '';
+        ui.openDialog(detailDialog, trigger);
+        try {
+          const fresh = await ui.request('/api/admin/appointments/' + item.id);
+          if (activeAppointment && activeAppointment.id === fresh.id) {
+            activeAppointment = fresh;
+            document.getElementById('detail-status').value = fresh.status || 'reserved';
+            document.getElementById('detail-status').disabled = fresh.status === 'cancelled';
+            document.getElementById('detail-notes').value = fresh.internal_notes || '';
+          }
+        } catch (error) {
+          ui.notify(error.message, 'error', 'detail-error');
+        }
+      }
+
+      async function loadRescheduleDates(item) {
+        const requestId = ++rescheduleRequest;
+        const dateSelect = document.getElementById('reschedule-date');
+        const slotSelect = document.getElementById('reschedule-slot');
+        const submit = document.getElementById('confirm-reschedule');
+        dateSelect.disabled = true;
+        slotSelect.disabled = true;
+        submit.disabled = true;
+        dateSelect.innerHTML = '<option value="">Cargando fechas...</option>';
+        slotSelect.innerHTML = '<option value="">Elegí una fecha</option>';
+        try {
+          const data = await ui.request('/api/public/availability?tribute_type_id=' + encodeURIComponent(item.tribute_type_id) + '&days=45');
+          if (requestId !== rescheduleRequest) return;
+          const dates = (data && data.dates) || [];
+          dateSelect.innerHTML = dates.length ? '<option value="">Seleccioná una fecha</option>' + dates.map(function (entry) { return '<option value="' + ui.escapeHtml(entry.date) + '">' + ui.escapeHtml(ui.formatDateLong(entry.date)) + '</option>'; }).join('') : '<option value="">No hay fechas disponibles</option>';
+          dateSelect.disabled = !dates.length;
+        } catch (error) {
+          if (requestId !== rescheduleRequest) return;
+          dateSelect.innerHTML = '<option value="">No se pudieron cargar</option>';
+          ui.notify(error.message, 'error', 'reschedule-error');
+        }
+      }
+
+      async function loadRescheduleSlots() {
+        const requestId = ++rescheduleRequest;
+        const dateSelect = document.getElementById('reschedule-date');
+        const slotSelect = document.getElementById('reschedule-slot');
+        const submit = document.getElementById('confirm-reschedule');
+        slotSelect.disabled = true;
+        submit.disabled = true;
+        slotSelect.innerHTML = '<option value="">Cargando horarios...</option>';
+        if (!activeAppointment || !dateSelect.value) return;
+        try {
+          const data = await ui.request('/api/public/slots?tribute_type_id=' + encodeURIComponent(activeAppointment.tribute_type_id) + '&date=' + encodeURIComponent(dateSelect.value));
+          if (requestId !== rescheduleRequest) return;
+          const slots = ((data && data.slots) || []).filter(function (slot) { return String(slot.id) !== String(activeAppointment.slot_id); });
+          slotSelect.innerHTML = slots.length ? '<option value="">Seleccioná un horario</option>' + slots.map(function (slot) { return '<option value="' + slot.id + '">' + ui.escapeHtml((slot.start_time || '').slice(0, 5) + ' a ' + (slot.end_time || '').slice(0, 5)) + ' · ' + slot.remaining + ' disponibles</option>'; }).join('') : '<option value="">No hay horarios disponibles</option>';
+          slotSelect.disabled = !slots.length;
+        } catch (error) {
+          if (requestId !== rescheduleRequest) return;
+          slotSelect.innerHTML = '<option value="">No se pudieron cargar</option>';
+          ui.notify(error.message, 'error', 'reschedule-error');
+        }
+      }
+
+      rows.addEventListener('click', function (event) {
+        const button = event.target.closest('button[data-view], button[data-cancel], button[data-reschedule]');
+        if (!button) return;
+        const item = findAppointment(button.dataset.view || button.dataset.cancel || button.dataset.reschedule);
+        if (!item) return;
+        activeAppointment = item;
+        if (button.dataset.view) return openDetail(item, button);
+        if (button.dataset.cancel) {
+          document.getElementById('cancel-error').hidden = true;
+          document.getElementById('cancel-context').textContent = 'Vas a cancelar la reserva ' + (item.reservation_code || '') + ' de ' + (item.citizen_name || 'este vecino') + ', prevista para ' + dateAndTime(item) + '.';
+          return ui.openDialog(cancelDialog, button);
+        }
+        document.getElementById('reschedule-error').hidden = true;
+        document.getElementById('reschedule-date').value = '';
+        document.getElementById('reschedule-slot').value = '';
+        document.getElementById('reschedule-context').textContent = (item.reservation_code || '') + ' · ' + (item.citizen_name || 'Sin nombre') + ' · ' + dateAndTime(item);
+        ui.openDialog(rescheduleDialog, button);
+        loadRescheduleDates(item);
+      });
+
+      document.getElementById('detail-form').addEventListener('submit', async function (event) {
+        event.preventDefault();
+        if (!activeAppointment) return;
+        const button = document.getElementById('save-detail');
+        ui.clearNotice('detail-error');
+        ui.setBusy(button, true, 'Guardando...');
+        try {
+          await ui.request('/api/admin/appointments/' + activeAppointment.id, { method: 'PATCH', body: { status: document.getElementById('detail-status').value, internal_notes: document.getElementById('detail-notes').value } });
+          ui.closeDialog(detailDialog);
+          ui.notify('Turno actualizado correctamente.', 'success');
+          await loadAppointments(pagination.page);
+        } catch (error) { ui.notify(error.message, 'error', 'detail-error'); }
+        finally { ui.setBusy(button, false); }
+      });
+
+      document.getElementById('cancel-form').addEventListener('submit', async function (event) {
+        event.preventDefault();
+        if (!activeAppointment) return;
+        const button = document.getElementById('confirm-cancel');
+        ui.clearNotice('cancel-error');
+        ui.setBusy(button, true, 'Cancelando...');
+        try {
+          await ui.request('/api/admin/appointments/' + activeAppointment.id + '/cancel', { method: 'POST' });
+          ui.closeDialog(cancelDialog);
+          ui.notify('Turno cancelado y cupo liberado.', 'success');
+          await loadAppointments(pagination.page);
+        } catch (error) { ui.notify(error.message, 'error', 'cancel-error'); }
+        finally { ui.setBusy(button, false); }
+      });
+
+      document.getElementById('reschedule-form').addEventListener('submit', async function (event) {
+        event.preventDefault();
+        if (!activeAppointment || !event.currentTarget.reportValidity()) return;
+        const button = document.getElementById('confirm-reschedule');
+        const slotId = Number(document.getElementById('reschedule-slot').value);
+        ui.clearNotice('reschedule-error');
+        ui.setBusy(button, true, 'Reprogramando...');
+        try {
+          await ui.request('/api/admin/appointments/' + activeAppointment.id + '/reschedule', { method: 'POST', body: { slot_id: slotId } });
+          ui.closeDialog(rescheduleDialog);
+          ui.notify('Turno reprogramado correctamente.', 'success');
+          await loadAppointments(pagination.page);
+        } catch (error) { ui.notify(error.message, 'error', 'reschedule-error'); }
+        finally { ui.setBusy(button, false); }
+      });
+
+      document.getElementById('reschedule-date').addEventListener('change', loadRescheduleSlots);
+      document.getElementById('reschedule-slot').addEventListener('change', function () { document.getElementById('confirm-reschedule').disabled = !this.value; });
+
+      form.addEventListener('submit', function (event) { event.preventDefault(); loadAppointments(1); });
+      document.getElementById('clear-filters').addEventListener('click', function () { form.reset(); loadAppointments(1); });
+      document.getElementById('reload').addEventListener('click', function () { loadAppointments(pagination.page); });
+      document.getElementById('previous-page').addEventListener('click', function () { if (pagination.page > 1) loadAppointments(pagination.page - 1); });
+      document.getElementById('next-page').addEventListener('click', function () { if (pagination.page < pagination.pages) loadAppointments(pagination.page + 1); });
+
+      const initialPage = populateFromUrl();
+      loadLookups().then(function () { populateFromUrl(); loadAppointments(initialPage, false); });
+    }());
+  </script>
+{% endblock %}

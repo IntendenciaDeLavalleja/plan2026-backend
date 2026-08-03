@@ -1,0 +1,323 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Registrar turno{% endblock %}
+{% block eyebrow %}Carga asistida{% endblock %}
+{% block page_title %}Registrar turno{% endblock %}
+{% block page_description %}Completá los datos junto al vecino y revisá la reserva antes de confirmarla.{% endblock %}
+{% block page_actions %}<a class="admin-button admin-button-secondary" href="/admin/turnos">Volver a turnos</a>{% endblock %}
+
+{% block head %}
+  <style>
+    .create-layout { max-width: 980px; margin-inline: auto; }
+    .create-panel-intro { margin-bottom: 20px; color: var(--admin-text-muted); }
+    .create-slot-status { min-height: 90px; display: grid; align-content: center; }
+    .create-receipt { padding: clamp(22px, 4vw, 38px); border: 1px solid #afd4bf; border-radius: var(--admin-radius-lg); background: var(--admin-success-soft); text-align: center; }
+    .create-receipt-code { margin: 18px 0; color: var(--admin-success); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: clamp(1.7rem, 5vw, 2.8rem); font-weight: 800; letter-spacing: .04em; overflow-wrap: anywhere; }
+    .create-receipt .admin-actions { justify-content: center; }
+    .review-notes { white-space: pre-wrap; }
+  </style>
+{% endblock %}
+
+{% block content %}
+  <div class="create-layout">
+    <section class="admin-card" id="wizard-card" aria-labelledby="wizard-title">
+      <h2 id="wizard-title" class="admin-hidden">Asistente para registrar turno</h2>
+      <ol class="admin-stepper" aria-label="Progreso del registro">
+        <li class="admin-step is-active" data-step-indicator="1" aria-current="step">1. Servicio y fecha</li>
+        <li class="admin-step" data-step-indicator="2">2. Horario</li>
+        <li class="admin-step" data-step-indicator="3">3. Datos del vecino</li>
+        <li class="admin-step" data-step-indicator="4">4. Revisión</li>
+      </ol>
+      <div id="wizard-notice" class="admin-alert" hidden role="status" aria-live="polite"></div>
+
+      <section class="admin-wizard-panel" data-step-panel="1" aria-labelledby="step-one-title">
+        <h2 id="step-one-title" tabindex="-1">Elegí el servicio y la fecha</h2>
+        <p class="create-panel-intro">Solo se muestran fechas con disponibilidad para el tributo seleccionado.</p>
+        <div class="admin-form-grid">
+          <div class="admin-field"><label for="tribute">Tributo <span class="admin-required">*</span></label><select class="admin-select" id="tribute" required disabled><option value="">Cargando tributos...</option></select></div>
+          <div class="admin-field"><label for="date">Fecha disponible <span class="admin-required">*</span></label><select class="admin-select" id="date" required disabled><option value="">Elegí un tributo</option></select></div>
+        </div>
+        <div class="admin-wizard-actions"><span></span><button class="admin-button" id="to-slots" type="button" disabled>Continuar a horarios</button></div>
+      </section>
+
+      <section class="admin-wizard-panel" data-step-panel="2" aria-labelledby="step-two-title" hidden>
+        <h2 id="step-two-title" tabindex="-1">Seleccioná un horario</h2>
+        <p class="create-panel-intro" id="slot-context"></p>
+        <div id="slot-state" class="admin-loading create-slot-status" role="status">Cargando horarios...</div>
+        <div id="slots" class="admin-slot-grid" aria-label="Horarios disponibles" hidden></div>
+        <input id="slot_id" type="hidden" />
+        <div class="admin-wizard-actions"><button class="admin-button admin-button-secondary" type="button" data-back="1">Volver</button><button class="admin-button" id="to-citizen" type="button" disabled>Continuar con los datos</button></div>
+      </section>
+
+      <section class="admin-wizard-panel" data-step-panel="3" aria-labelledby="step-three-title" hidden>
+        <h2 id="step-three-title" tabindex="-1">Ingresá los datos del vecino</h2>
+        <p class="create-panel-intro">Los campos marcados con asterisco son obligatorios.</p>
+        <form id="citizen-form" novalidate>
+          <div class="admin-form-grid">
+            <div class="admin-field"><label for="citizen_name">Nombre completo <span class="admin-required">*</span></label><input class="admin-input" id="citizen_name" required minlength="3" maxlength="160" autocomplete="name" aria-describedby="citizen_name-error" /><span class="admin-error" id="citizen_name-error" hidden></span></div>
+            <div class="admin-field"><label for="citizen_document">Cédula <span class="admin-required">*</span></label><input class="admin-input" id="citizen_document" required minlength="6" maxlength="12" pattern="[0-9.\-]{6,12}" inputmode="numeric" autocomplete="off" aria-describedby="citizen_document-help citizen_document-error" /><span class="admin-help" id="citizen_document-help">Entre 6 y 12 números, puntos o guiones.</span><span class="admin-error" id="citizen_document-error" hidden></span></div>
+            <div class="admin-field"><label for="phone">Teléfono <span class="admin-required">*</span></label><input class="admin-input" id="phone" type="tel" required minlength="6" maxlength="30" pattern="[0-9 +()\-]{6,30}" autocomplete="tel" aria-describedby="phone-error" /><span class="admin-error" id="phone-error" hidden></span></div>
+            <div class="admin-field"><label for="email">Email</label><input class="admin-input" id="email" type="email" maxlength="120" autocomplete="email" aria-describedby="email-error" /><span class="admin-error" id="email-error" hidden></span></div>
+            <div class="admin-field"><label for="reference_value">Referencia</label><input class="admin-input" id="reference_value" maxlength="80" /></div>
+            <div class="admin-field admin-field-full"><label for="comments">Comentarios</label><textarea class="admin-textarea" id="comments" maxlength="1000" rows="4"></textarea><span class="admin-help">Máximo 1000 caracteres.</span></div>
+            <div class="admin-field admin-field-full"><label class="admin-check" for="accept_terms"><input id="accept_terms" type="checkbox" required checked aria-describedby="accept_terms-error" /><span><strong>Confirmo la aceptación de los términos <span class="admin-required">*</span></strong><small>El vecino autorizó el registro de la reserva.</small></span></label><span class="admin-error" id="accept_terms-error" hidden></span></div>
+          </div>
+        </form>
+        <div class="admin-wizard-actions"><button class="admin-button admin-button-secondary" type="button" data-back="2">Volver</button><button class="admin-button" id="to-review" type="button">Revisar turno</button></div>
+      </section>
+
+      <section class="admin-wizard-panel" data-step-panel="4" aria-labelledby="step-four-title" hidden>
+        <h2 id="step-four-title" tabindex="-1">Revisá antes de confirmar</h2>
+        <p class="create-panel-intro">Verificá los datos con el vecino. El turno se registra recién al confirmar.</p>
+        <div class="admin-summary" id="review-summary"></div>
+        <div class="admin-wizard-actions"><button class="admin-button admin-button-secondary" type="button" data-back="3">Corregir datos</button><button class="admin-button" id="submit-appointment" type="button">Confirmar y registrar</button></div>
+      </section>
+    </section>
+
+    <section class="create-receipt" id="success-receipt" tabindex="-1" hidden aria-labelledby="receipt-title">
+      <p class="admin-eyebrow">Reserva confirmada</p>
+      <h2 id="receipt-title">El turno fue registrado</h2>
+      <p>Guardá o comunicá este código de reserva al vecino:</p>
+      <div class="create-receipt-code" id="receipt-code"></div>
+      <div class="admin-summary" id="receipt-summary"></div>
+      <div class="admin-actions" style="margin-top: 22px;"><button class="admin-button" id="create-another" type="button">Registrar otro turno</button><a class="admin-button admin-button-secondary" href="/admin/turnos">Ver todos los turnos</a></div>
+    </section>
+  </div>
+{% endblock %}
+
+{% block scripts %}
+  <script>
+    (function () {
+      'use strict';
+      const ui = window.AdminUI;
+      const tributeSelect = document.getElementById('tribute');
+      const dateSelect = document.getElementById('date');
+      const slotInput = document.getElementById('slot_id');
+      const slotsBox = document.getElementById('slots');
+      const slotState = document.getElementById('slot-state');
+      const citizenForm = document.getElementById('citizen-form');
+      let tributeTypes = [];
+      let availableSlots = [];
+      let currentStep = 1;
+      let datesRequest = 0;
+      let slotsRequest = 0;
+      let submitting = false;
+
+      function showNotice(message, kind) {
+        ui.notify(message, kind || 'error', 'wizard-notice');
+        document.getElementById('wizard-notice').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+
+      function clearSelectedSlot(message) {
+        slotInput.value = '';
+        availableSlots = [];
+        slotsBox.innerHTML = '';
+        slotsBox.hidden = true;
+        slotState.hidden = false;
+        slotState.className = 'admin-empty create-slot-status';
+        slotState.innerHTML = '<span>' + ui.escapeHtml(message || 'Elegí una fecha para consultar horarios.') + '</span>';
+        document.getElementById('to-citizen').disabled = true;
+      }
+
+      function goToStep(step) {
+        currentStep = step;
+        document.querySelectorAll('[data-step-panel]').forEach(function (panel) { panel.hidden = Number(panel.dataset.stepPanel) !== step; });
+        document.querySelectorAll('[data-step-indicator]').forEach(function (indicator) {
+          const value = Number(indicator.dataset.stepIndicator);
+          indicator.classList.toggle('is-active', value === step);
+          indicator.classList.toggle('is-complete', value < step);
+          if (value === step) indicator.setAttribute('aria-current', 'step'); else indicator.removeAttribute('aria-current');
+        });
+        ui.clearNotice('wizard-notice');
+        const panel = document.querySelector('[data-step-panel="' + step + '"]');
+        const heading = panel.querySelector('h2');
+        if (heading) heading.focus({ preventScroll: true });
+        panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+
+      function selectedTribute() {
+        return tributeTypes.find(function (item) { return String(item.id) === tributeSelect.value; });
+      }
+
+      function selectedSlot() {
+        return availableSlots.find(function (item) { return String(item.id) === slotInput.value; });
+      }
+
+      async function loadTributes() {
+        tributeSelect.disabled = true;
+        try {
+          tributeTypes = await ui.request('/api/public/tribute-types') || [];
+          tributeSelect.innerHTML = '<option value="">Seleccioná un tributo</option>' + tributeTypes.map(function (item) { return '<option value="' + item.id + '">' + ui.escapeHtml(item.name) + '</option>'; }).join('');
+          tributeSelect.disabled = !tributeTypes.length;
+          if (!tributeTypes.length) showNotice('No hay tributos disponibles para registrar turnos.', 'warning');
+        } catch (error) {
+          tributeSelect.innerHTML = '<option value="">No se pudieron cargar</option>';
+          showNotice(error.message, 'error');
+        }
+      }
+
+      async function loadDates() {
+        const requestId = ++datesRequest;
+        ++slotsRequest;
+        clearSelectedSlot('Elegí una fecha para consultar horarios.');
+        dateSelect.innerHTML = '<option value="">Cargando fechas...</option>';
+        dateSelect.disabled = true;
+        document.getElementById('to-slots').disabled = true;
+        if (!tributeSelect.value) {
+          dateSelect.innerHTML = '<option value="">Elegí un tributo</option>';
+          return;
+        }
+        try {
+          const data = await ui.request('/api/public/availability?tribute_type_id=' + encodeURIComponent(tributeSelect.value) + '&days=45');
+          if (requestId !== datesRequest) return;
+          const dates = data.dates || [];
+          dateSelect.innerHTML = dates.length ? '<option value="">Seleccioná una fecha</option>' + dates.map(function (item) { return '<option value="' + ui.escapeHtml(item.date) + '">' + ui.escapeHtml(ui.formatDateLong(item.date)) + ' (' + item.remaining + ' disponibles)</option>'; }).join('') : '<option value="">Sin fechas disponibles</option>';
+          dateSelect.disabled = !dates.length;
+          if (!dates.length) showNotice('No hay fechas disponibles para este tributo.', 'warning');
+        } catch (error) {
+          if (requestId !== datesRequest) return;
+          dateSelect.innerHTML = '<option value="">No se pudieron cargar</option>';
+          showNotice(error.message, 'error');
+        }
+      }
+
+      async function loadSlots() {
+        const requestId = ++slotsRequest;
+        clearSelectedSlot('Cargando horarios...');
+        slotState.className = 'admin-loading create-slot-status';
+        slotState.textContent = 'Cargando horarios...';
+        document.getElementById('slot-context').textContent = (selectedTribute() ? selectedTribute().name : 'Tributo') + ' · ' + ui.formatDateLong(dateSelect.value);
+        try {
+          const data = await ui.request('/api/public/slots?tribute_type_id=' + encodeURIComponent(tributeSelect.value) + '&date=' + encodeURIComponent(dateSelect.value));
+          if (requestId !== slotsRequest) return;
+          availableSlots = data.slots || [];
+          if (!availableSlots.length) {
+            slotState.className = 'admin-empty create-slot-status';
+            slotState.innerHTML = '<strong>No hay horarios disponibles</strong><span>Volvé y seleccioná otra fecha.</span>';
+            return;
+          }
+          slotsBox.innerHTML = availableSlots.map(function (slot) {
+            return '<button class="admin-slot-option" type="button" data-slot="' + slot.id + '" aria-pressed="false"><strong>' + ui.escapeHtml((slot.start_time || '').slice(0, 5)) + ' - ' + ui.escapeHtml((slot.end_time || '').slice(0, 5)) + '</strong><small>' + slot.remaining + (slot.remaining === 1 ? ' lugar disponible' : ' lugares disponibles') + '</small></button>';
+          }).join('');
+          slotState.hidden = true;
+          slotsBox.hidden = false;
+        } catch (error) {
+          if (requestId !== slotsRequest) return;
+          slotState.className = 'admin-error-state create-slot-status';
+          slotState.innerHTML = '<strong>No se pudieron cargar los horarios</strong><span>' + ui.escapeHtml(error.message) + '</span>';
+        }
+      }
+
+      function setFieldError(field, message) {
+        const error = document.getElementById(field.id + '-error');
+        field.setAttribute('aria-invalid', 'true');
+        if (error) { error.textContent = message; error.hidden = false; }
+      }
+
+      function clearFieldErrors() {
+        citizenForm.querySelectorAll('[aria-invalid="true"]').forEach(function (field) { field.removeAttribute('aria-invalid'); });
+        citizenForm.querySelectorAll('.admin-error').forEach(function (error) { error.hidden = true; error.textContent = ''; });
+      }
+
+      function validateCitizen() {
+        clearFieldErrors();
+        const fields = ['citizen_name', 'citizen_document', 'phone', 'email', 'accept_terms'].map(function (id) { return document.getElementById(id); });
+        let firstInvalid = null;
+        fields.forEach(function (field) {
+          if (!field.validity.valid) {
+            let message = 'Revisá este dato.';
+            if (field.validity.valueMissing) message = field.type === 'checkbox' ? 'Debés confirmar la aceptación para continuar.' : 'Este campo es obligatorio.';
+            else if (field.id === 'citizen_document') message = 'Ingresá entre 6 y 12 números, puntos o guiones.';
+            else if (field.id === 'phone') message = 'Ingresá un teléfono válido de 6 a 30 caracteres.';
+            else if (field.id === 'email') message = 'Ingresá un email válido.';
+            else if (field.validity.tooShort) message = 'Ingresá al menos ' + field.minLength + ' caracteres.';
+            setFieldError(field, message);
+            if (!firstInvalid) firstInvalid = field;
+          }
+        });
+        if (firstInvalid) { firstInvalid.focus(); return false; }
+        return true;
+      }
+
+      function summaryItem(label, value, extraClass) {
+        return '<div class="admin-summary-item"><span>' + ui.escapeHtml(label) + '</span><strong' + (extraClass ? ' class="' + extraClass + '"' : '') + '>' + ui.escapeHtml(value || 'No informado') + '</strong></div>';
+      }
+
+      function renderReview(target) {
+        const tribute = selectedTribute();
+        const slot = selectedSlot();
+        const time = slot ? (slot.start_time || '').slice(0, 5) + ' - ' + (slot.end_time || '').slice(0, 5) : '';
+        target.innerHTML = summaryItem('Tributo', tribute && tribute.name) + summaryItem('Fecha', ui.formatDateLong(dateSelect.value)) + summaryItem('Horario', time) + summaryItem('Vecino', document.getElementById('citizen_name').value.trim()) + summaryItem('Cédula', document.getElementById('citizen_document').value.trim()) + summaryItem('Teléfono', document.getElementById('phone').value.trim()) + summaryItem('Email', document.getElementById('email').value.trim()) + summaryItem('Referencia', document.getElementById('reference_value').value.trim()) + summaryItem('Comentarios', document.getElementById('comments').value.trim(), 'review-notes');
+      }
+
+      function resetWizard() {
+        citizenForm.reset();
+        document.getElementById('accept_terms').checked = true;
+        tributeSelect.value = '';
+        dateSelect.innerHTML = '<option value="">Elegí un tributo</option>';
+        dateSelect.disabled = true;
+        document.getElementById('to-slots').disabled = true;
+        clearSelectedSlot('Elegí una fecha para consultar horarios.');
+        clearFieldErrors();
+        document.getElementById('success-receipt').hidden = true;
+        document.getElementById('wizard-card').hidden = false;
+        goToStep(1);
+      }
+
+      tributeSelect.addEventListener('change', function () { loadDates(); });
+      dateSelect.addEventListener('change', function () {
+        ++slotsRequest;
+        clearSelectedSlot(dateSelect.value ? 'Continuá para consultar los horarios.' : 'Elegí una fecha para consultar horarios.');
+        document.getElementById('to-slots').disabled = !dateSelect.value;
+      });
+      slotsBox.addEventListener('click', function (event) {
+        const button = event.target.closest('[data-slot]');
+        if (!button) return;
+        slotsBox.querySelectorAll('[data-slot]').forEach(function (option) { option.setAttribute('aria-pressed', String(option === button)); });
+        slotInput.value = button.dataset.slot;
+        document.getElementById('to-citizen').disabled = false;
+      });
+      document.getElementById('to-slots').addEventListener('click', function () { if (tributeSelect.value && dateSelect.value) { goToStep(2); loadSlots(); } });
+      document.getElementById('to-citizen').addEventListener('click', function () { if (slotInput.value) goToStep(3); });
+      document.getElementById('to-review').addEventListener('click', function () { if (validateCitizen()) { renderReview(document.getElementById('review-summary')); goToStep(4); } });
+      citizenForm.addEventListener('submit', function (event) { event.preventDefault(); if (validateCitizen()) { renderReview(document.getElementById('review-summary')); goToStep(4); } });
+      document.querySelectorAll('[data-back]').forEach(function (button) { button.addEventListener('click', function () { goToStep(Number(button.dataset.back)); }); });
+
+      document.getElementById('submit-appointment').addEventListener('click', async function () {
+        if (submitting || !slotInput.value || !validateCitizen()) return;
+        const button = this;
+        const payload = {
+          tribute_type_id: Number(tributeSelect.value),
+          slot_id: Number(slotInput.value),
+          citizen_name: document.getElementById('citizen_name').value,
+          citizen_document: document.getElementById('citizen_document').value,
+          phone: document.getElementById('phone').value,
+          email: document.getElementById('email').value || null,
+          reference_value: document.getElementById('reference_value').value || null,
+          comments: document.getElementById('comments').value || null,
+          accept_terms: document.getElementById('accept_terms').checked
+        };
+        submitting = true;
+        ui.setBusy(button, true, 'Registrando...');
+        ui.clearNotice('wizard-notice');
+        try {
+          const data = await ui.request('/api/public/appointments', { method: 'POST', body: payload });
+          document.getElementById('receipt-code').textContent = data.reservation_code;
+          renderReview(document.getElementById('receipt-summary'));
+          document.getElementById('wizard-card').hidden = true;
+          const receipt = document.getElementById('success-receipt');
+          receipt.hidden = false;
+          receipt.focus();
+        } catch (error) {
+          showNotice(error.message, 'error');
+        } finally {
+          submitting = false;
+          ui.setBusy(button, false);
+        }
+      });
+
+      document.getElementById('create-another').addEventListener('click', resetWizard);
+      loadTributes();
+    }());
+  </script>
+{% endblock %}

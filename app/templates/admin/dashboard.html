@@ -1,0 +1,197 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Inicio{% endblock %}
+{% block eyebrow %}Resumen operativo{% endblock %}
+{% block page_title %}Panel administrativo{% endblock %}
+{% block page_description %}Consultá la actividad de la agenda y accedé a las tareas de gestión más frecuentes.{% endblock %}
+
+{% block page_actions %}
+  <a class="admin-button" href="/admin/registrar-turno">Registrar turno</a>
+  <a class="admin-button admin-button-secondary" href="/admin/turnos">Ver turnos</a>
+{% endblock %}
+
+{% block content %}
+  <section class="admin-card" aria-labelledby="metrics-title">
+    <div class="admin-card-header">
+      <div>
+        <h2 id="metrics-title">Actividad de la agenda</h2>
+        <p>Indicadores actualizados del sistema.</p>
+      </div>
+      <button class="admin-button admin-button-secondary admin-button-small" id="reload-dashboard" type="button">Actualizar</button>
+    </div>
+    <div id="metrics-state" class="admin-loading" role="status" aria-live="polite">Cargando indicadores...</div>
+    <div class="admin-metrics admin-hidden" id="metrics" hidden></div>
+  </section>
+
+  <section class="admin-card" aria-labelledby="upcoming-title">
+    <div class="admin-card-header">
+      <div>
+        <h2 id="upcoming-title">Próximos turnos</h2>
+        <p>Las siguientes reservas confirmadas o pendientes de confirmación.</p>
+      </div>
+      <a class="admin-button admin-button-secondary admin-button-small" href="/admin/turnos">Ver todos</a>
+    </div>
+    <div id="appointments-state" class="admin-loading" role="status" aria-live="polite">Cargando próximos turnos...</div>
+    <div class="admin-table-region admin-hidden" id="appointments-table" tabindex="0" aria-label="Próximos turnos, tabla desplazable horizontalmente" hidden>
+      <table class="admin-table">
+        <caption>Próximos turnos agendados</caption>
+        <thead>
+          <tr>
+            <th scope="col">Fecha y hora</th>
+            <th scope="col">Vecino</th>
+            <th scope="col">Trámite</th>
+            <th scope="col">Sede</th>
+            <th scope="col">Estado</th>
+          </tr>
+        </thead>
+        <tbody id="appointments-body"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="admin-card admin-card-subtle" aria-labelledby="actions-title">
+    <div class="admin-card-header">
+      <div>
+        <h2 id="actions-title">Acciones rápidas</h2>
+        <p>Ingresá directamente al área que necesitás gestionar.</p>
+      </div>
+    </div>
+    <div class="admin-grid admin-grid-auto">
+      <a class="admin-button admin-button-secondary" href="/admin/turnos">Gestionar turnos</a>
+      <a class="admin-button admin-button-secondary" href="/admin/disponibilidad">Administrar disponibilidad</a>
+      <a class="admin-button admin-button-secondary" href="/admin/tributos">Configurar tributos</a>
+      <a class="admin-button admin-button-secondary" href="/admin/sedes">Administrar sedes</a>
+    </div>
+  </section>
+{% endblock %}
+
+{% block scripts %}
+  <script>
+    (function () {
+      'use strict';
+
+      const metricDefinitions = [
+        ['today', 'Turnos de hoy', 'Reservados y confirmados para hoy'],
+        ['upcoming', 'Próximos', 'Reservas desde hoy en adelante'],
+        ['pending', 'Pendientes', 'Turnos pendientes de confirmación'],
+        ['confirmed', 'Confirmados', 'Turnos confirmados'],
+        ['attended', 'Atendidos', 'Turnos completados'],
+        ['cancelled', 'Cancelados', 'Turnos cancelados'],
+        ['no_show', 'No asistieron', 'Ausencias registradas'],
+        ['weekly_capacity', 'Capacidad semanal', 'Lugares disponibles en 7 días'],
+        ['active_tributes', 'Tributos activos', 'Trámites disponibles para agendar']
+      ];
+      const metrics = document.getElementById('metrics');
+      const metricsState = document.getElementById('metrics-state');
+      const appointmentsState = document.getElementById('appointments-state');
+      const appointmentsTable = document.getElementById('appointments-table');
+      const appointmentsBody = document.getElementById('appointments-body');
+      const reloadButton = document.getElementById('reload-dashboard');
+
+      function appendTextElement(parent, tagName, className, value) {
+        const element = document.createElement(tagName);
+        if (className) element.className = className;
+        element.textContent = value == null || value === '' ? 'Sin dato' : String(value);
+        parent.appendChild(element);
+        return element;
+      }
+
+      function setHidden(element, hidden) {
+        element.hidden = hidden;
+        element.classList.toggle('admin-hidden', hidden);
+      }
+
+      function showState(element, kind, title, detail) {
+        element.replaceChildren();
+        element.className = kind === 'loading' ? 'admin-loading' : (kind === 'empty' ? 'admin-empty' : 'admin-error-state');
+        element.setAttribute('role', kind === 'error' ? 'alert' : 'status');
+        if (title) appendTextElement(element, 'strong', '', title);
+        if (detail) appendTextElement(element, 'span', '', detail);
+        setHidden(element, false);
+      }
+
+      function renderMetrics(values) {
+        const source = values && typeof values === 'object' ? values : {};
+        metrics.replaceChildren();
+        metricDefinitions.forEach(function (definition) {
+          const card = document.createElement('article');
+          card.className = 'admin-metric';
+          appendTextElement(card, 'div', 'admin-metric-label', definition[1]);
+          appendTextElement(card, 'div', 'admin-metric-value', source[definition[0]] == null ? 0 : source[definition[0]]);
+          appendTextElement(card, 'div', 'admin-metric-help', definition[2]);
+          metrics.appendChild(card);
+        });
+        setHidden(metricsState, true);
+        setHidden(metrics, false);
+      }
+
+      function appointmentValue(appointment, nestedKey, flatKey, property) {
+        const nested = appointment && appointment[nestedKey];
+        if (nested && typeof nested === 'object' && nested[property] != null) return nested[property];
+        if (appointment && appointment[flatKey] != null) return appointment[flatKey];
+        return '';
+      }
+
+      function renderAppointments(value) {
+        const appointments = Array.isArray(value) ? value : [];
+        appointmentsBody.replaceChildren();
+        setHidden(appointmentsTable, true);
+        if (!appointments.length) {
+          showState(appointmentsState, 'empty', 'No hay próximos turnos', 'Cuando se registren reservas futuras aparecerán en este listado.');
+          return;
+        }
+
+        appointments.forEach(function (appointment) {
+          const item = appointment && typeof appointment === 'object' ? appointment : {};
+          const row = document.createElement('tr');
+          const dateCell = document.createElement('td');
+          appendTextElement(dateCell, 'strong', '', AdminUI.formatDate(item.date));
+          appendTextElement(dateCell, 'div', 'admin-muted admin-nowrap', [item.start_time, item.end_time].filter(Boolean).join(' a ') || 'Sin horario');
+          row.appendChild(dateCell);
+
+          appendTextElement(row, 'td', '', appointmentValue(item, 'citizen', 'citizen_name', 'name'));
+          appendTextElement(row, 'td', '', appointmentValue(item, 'tribute_type', 'tribute_type_name', 'name'));
+          appendTextElement(row, 'td', '', appointmentValue(item, 'location', 'location_name', 'name'));
+
+          const statusCell = document.createElement('td');
+          const badge = appendTextElement(statusCell, 'span', 'admin-badge', AdminUI.statusLabel(item.status));
+          const statusClass = AdminUI.statusClass(item.status);
+          if (statusClass) badge.classList.add(statusClass);
+          row.appendChild(statusCell);
+          appointmentsBody.appendChild(row);
+        });
+        setHidden(appointmentsState, true);
+        setHidden(appointmentsTable, false);
+      }
+
+      async function loadDashboard() {
+        AdminUI.clearNotice();
+        setHidden(metrics, true);
+        setHidden(appointmentsTable, true);
+        showState(metricsState, 'loading', '', 'Cargando indicadores...');
+        showState(appointmentsState, 'loading', '', 'Cargando próximos turnos...');
+        AdminUI.setBusy(reloadButton, true, 'Actualizando...');
+        try {
+          const data = await AdminUI.request('/api/admin/dashboard');
+          const dashboard = data && typeof data === 'object' ? data : {};
+          renderMetrics(dashboard.metrics);
+          renderAppointments(dashboard.upcoming_appointments);
+        } catch (error) {
+          if (error.status === 401 || error.status === 403) {
+            window.location.href = '/admin/login';
+            return;
+          }
+          const message = error.message || 'No se pudieron cargar los datos del panel.';
+          showState(metricsState, 'error', 'No se cargaron los indicadores', message);
+          showState(appointmentsState, 'error', 'No se cargaron los próximos turnos', message);
+          AdminUI.notify(message, 'error');
+        } finally {
+          AdminUI.setBusy(reloadButton, false);
+        }
+      }
+
+      reloadButton.addEventListener('click', loadDashboard);
+      loadDashboard();
+    }());
+  </script>
+{% endblock %}

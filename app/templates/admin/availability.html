@@ -1,0 +1,883 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Disponibilidad{% endblock %}
+{% block eyebrow %}Agenda y capacidad{% endblock %}
+{% block page_title %}Disponibilidad{% endblock %}
+{% block page_description %}Creá horarios, administrá reglas recurrentes y controlá los días sin atención desde un único lugar.{% endblock %}
+
+{% block content %}
+  <nav class="admin-tabs" role="tablist" aria-label="Secciones de disponibilidad">
+    <button class="admin-tab" id="tab-calendar" type="button" role="tab" aria-selected="true" aria-controls="panel-calendar" tabindex="0">Calendario</button>
+    <button class="admin-tab" id="tab-create" type="button" role="tab" aria-selected="false" aria-controls="panel-create" tabindex="-1">Crear horarios</button>
+    <button class="admin-tab" id="tab-rules" type="button" role="tab" aria-selected="false" aria-controls="panel-rules" tabindex="-1">Reglas</button>
+    <button class="admin-tab" id="tab-blocked" type="button" role="tab" aria-selected="false" aria-controls="panel-blocked" tabindex="-1">Días bloqueados</button>
+  </nav>
+
+  <section class="admin-tab-panel" id="panel-calendar" role="tabpanel" aria-labelledby="tab-calendar" tabindex="0">
+    <div class="admin-card">
+      <div class="admin-card-header">
+        <div>
+          <h2>Calendario de horarios</h2>
+          <p>Consultá capacidad y reservas. Los cambios se aplican a cada horario individualmente.</p>
+        </div>
+        <div class="admin-actions">
+          <button class="admin-button admin-button-secondary" id="open-block-date" type="button">Bloquear fecha</button>
+          <button class="admin-button admin-button-secondary" id="reload-slots" type="button">Actualizar</button>
+        </div>
+      </div>
+      <form class="admin-toolbar" id="slot-filters">
+        <div class="admin-form-grid">
+          <div class="admin-field">
+            <label for="slot-filter-tribute">Tributo</label>
+            <select class="admin-select" id="slot-filter-tribute"><option value="">Todos los tributos</option></select>
+          </div>
+          <div class="admin-field">
+            <label for="slot-filter-from">Desde</label>
+            <input class="admin-input" id="slot-filter-from" type="date" />
+          </div>
+          <div class="admin-field">
+            <label for="slot-filter-to">Hasta</label>
+            <input class="admin-input" id="slot-filter-to" type="date" />
+          </div>
+          <label class="admin-check">
+            <input id="slot-filter-blocked" type="checkbox" />
+            <span><strong>Solo bloqueados</strong><small>Oculta los horarios disponibles.</small></span>
+          </label>
+          <div class="admin-toolbar-actions">
+            <button class="admin-button" type="submit">Aplicar filtros</button>
+            <button class="admin-button admin-button-secondary" id="clear-slot-filters" type="button">Limpiar</button>
+          </div>
+        </div>
+      </form>
+      <div id="slots-state" class="admin-loading" role="status">Cargando horarios…</div>
+      <div class="admin-table-region" id="slots-table-wrap" tabindex="0" aria-label="Horarios encontrados, tabla desplazable horizontalmente" hidden>
+        <table class="admin-table">
+          <caption id="slots-caption">Horarios encontrados</caption>
+          <thead><tr><th scope="col">Fecha y hora</th><th scope="col">Tributo / sede</th><th scope="col">Capacidad</th><th scope="col">Estado</th><th scope="col">Acciones</th></tr></thead>
+          <tbody id="slot-rows"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section class="admin-tab-panel" id="panel-create" role="tabpanel" aria-labelledby="tab-create" tabindex="0" hidden>
+    <div class="admin-card">
+      <div class="admin-card-header"><div><h2>Crear horarios</h2><p>Completá cuatro pasos. La estimación se calcula en este navegador y no crea horarios hasta confirmar.</p></div></div>
+      <div id="bulk-notice" class="admin-alert" hidden role="status" aria-live="polite"></div>
+      <ol class="admin-stepper" aria-label="Progreso">
+        <li class="admin-step is-active" data-step-label="1" aria-current="step">1. Atención</li><li class="admin-step" data-step-label="2">2. Días</li><li class="admin-step" data-step-label="3">3. Horario</li><li class="admin-step" data-step-label="4">4. Revisar</li>
+      </ol>
+      <form id="bulk-form" novalidate>
+        <section class="admin-wizard-panel" data-step="1" aria-labelledby="bulk-step-1-title">
+          <fieldset class="admin-form-section">
+            <legend id="bulk-step-1-title" tabindex="-1">¿Dónde y para qué trámites?</legend>
+            <p class="admin-form-section-description">Podés generar el mismo horario para todos los tributos o elegir algunos.</p>
+            <div class="admin-form-grid">
+              <div class="admin-field"><label for="bulk-location">Sede</label><select class="admin-select" id="bulk-location"><option value="">Sin sede asignada</option></select></div>
+              <label class="admin-check"><input id="bulk-all" type="checkbox" checked /><span><strong>Aplicar a todos los tributos</strong><small>Desmarcá para seleccionar tributos específicos.</small></span></label>
+              <div class="admin-field admin-field-full"><span class="admin-field-label" id="bulk-tributes-label">Tributos <span class="admin-required">*</span></span><div class="admin-choice-grid" id="bulk-tributes" role="group" aria-labelledby="bulk-tributes-label" aria-describedby="bulk-tributes-error"></div><span class="admin-error" id="bulk-tributes-error" hidden>Seleccioná al menos un tributo o aplicá a todos.</span></div>
+            </div>
+          </fieldset>
+        </section>
+        <section class="admin-wizard-panel" data-step="2" aria-labelledby="bulk-step-2-title" hidden>
+          <fieldset class="admin-form-section">
+            <legend id="bulk-step-2-title" tabindex="-1">¿En qué fechas habrá atención?</legend>
+            <p class="admin-form-section-description">Los rangos rápidos seleccionan únicamente los días hábiles.</p>
+            <div class="admin-quick-options" aria-label="Rangos rápidos"><button class="admin-quick-option" type="button" data-date-days="7">Próxima semana</button><button class="admin-quick-option" type="button" data-date-days="15">Próximos 15 días</button><button class="admin-quick-option" type="button" data-date-days="30">Próximos 30 días</button></div>
+            <div class="admin-form-grid">
+              <div class="admin-field"><label for="bulk-start-date">Fecha inicial <span class="admin-required">*</span></label><input class="admin-input" id="bulk-start-date" type="date" required /></div>
+              <div class="admin-field"><label for="bulk-end-date">Fecha final <span class="admin-required">*</span></label><input class="admin-input" id="bulk-end-date" type="date" required /></div>
+              <div class="admin-field admin-field-full"><span class="admin-field-label" id="bulk-weekdays-label">Días de atención <span class="admin-required">*</span></span><div class="admin-choice-grid" id="bulk-weekdays" role="group" aria-labelledby="bulk-weekdays-label" aria-describedby="bulk-weekdays-error"></div><span class="admin-error" id="bulk-weekdays-error" hidden>Seleccioná al menos un día.</span></div>
+            </div>
+          </fieldset>
+        </section>
+        <section class="admin-wizard-panel" data-step="3" aria-labelledby="bulk-step-3-title" hidden>
+          <fieldset class="admin-form-section">
+            <legend id="bulk-step-3-title" tabindex="-1">¿Cómo se divide la jornada?</legend>
+            <p class="admin-form-section-description">La duración define cuántos horarios caben entre la hora inicial y final.</p>
+            <div class="admin-quick-options" aria-label="Duraciones rápidas"><button class="admin-quick-option" type="button" data-duration="15">15 min</button><button class="admin-quick-option" type="button" data-duration="20">20 min</button><button class="admin-quick-option" type="button" data-duration="30">30 min</button><button class="admin-quick-option" type="button" data-duration="60">60 min</button></div>
+            <div class="admin-form-grid">
+              <div class="admin-field"><label for="bulk-start-time">Hora inicial <span class="admin-required">*</span></label><input class="admin-input" id="bulk-start-time" type="time" value="09:00" required /></div>
+              <div class="admin-field"><label for="bulk-end-time">Hora final <span class="admin-required">*</span></label><input class="admin-input" id="bulk-end-time" type="time" value="16:00" required /></div>
+              <div class="admin-field"><label for="bulk-duration">Duración en minutos <span class="admin-required">*</span></label><input class="admin-input" id="bulk-duration" type="number" min="5" max="480" value="20" required /></div>
+              <div class="admin-field"><label for="bulk-capacity">Cupo por horario <span class="admin-required">*</span></label><input class="admin-input" id="bulk-capacity" type="number" min="1" max="500" value="1" required /></div>
+            </div>
+          </fieldset>
+        </section>
+        <section class="admin-wizard-panel" data-step="4" aria-labelledby="bulk-step-4-title" hidden>
+          <fieldset class="admin-form-section">
+            <legend id="bulk-step-4-title" tabindex="-1">Revisá antes de crear</legend>
+            <p class="admin-form-section-description">Los horarios que ya existan pueden no volver a crearse. Por eso el resultado puede ser menor que la estimación.</p>
+            <div class="admin-summary" id="bulk-summary"></div>
+            <div class="admin-alert is-warning" role="note"><strong>Posibles duplicados</strong>La generación respeta los horarios existentes. Revisá el resultado antes de volver a intentarlo.</div>
+          </fieldset>
+        </section>
+        <div class="admin-wizard-actions"><button class="admin-button admin-button-secondary" id="bulk-back" type="button" hidden>Anterior</button><button class="admin-button" id="bulk-next" type="button">Continuar</button><button class="admin-button" id="bulk-submit" type="submit" hidden>Crear horarios</button></div>
+      </form>
+    </div>
+  </section>
+
+  <section class="admin-tab-panel" id="panel-rules" role="tabpanel" aria-labelledby="tab-rules" tabindex="0" hidden>
+    <div class="admin-card">
+      <div class="admin-card-header"><div><h2>Reglas recurrentes</h2><p>Una regla guarda el patrón; los horarios solo se crean cuando elegís “Generar horarios”. Editar o eliminar una regla no cambia los horarios ya generados.</p></div><div class="admin-actions"><button class="admin-button" id="new-rule" type="button">Nueva regla</button><button class="admin-button admin-button-secondary" id="reload-rules" type="button">Actualizar</button></div></div>
+      <div id="rule-notice" class="admin-alert" hidden role="status" aria-live="polite"></div>
+      <div id="rules-state" class="admin-loading" role="status">Cargando reglas…</div>
+      <div class="admin-table-region" id="rules-table-wrap" tabindex="0" aria-label="Reglas de disponibilidad, tabla desplazable horizontalmente" hidden><table class="admin-table"><caption>Reglas de disponibilidad</caption><thead><tr><th scope="col">Regla</th><th scope="col">Vigencia</th><th scope="col">Horario</th><th scope="col">Asignación</th><th scope="col">Acciones</th></tr></thead><tbody id="rule-rows"></tbody></table></div>
+    </div>
+  </section>
+
+  <section class="admin-tab-panel" id="panel-blocked" role="tabpanel" aria-labelledby="tab-blocked" tabindex="0" hidden>
+    <div class="admin-grid admin-grid-2">
+      <div class="admin-card">
+        <div class="admin-card-header"><div><h2>Bloquear una fecha</h2><p>Bloquea los horarios existentes de la fecha, para todos los tributos o para uno específico.</p></div></div>
+        <button class="admin-button" id="open-block-date-secondary" type="button">Bloquear fecha</button>
+      </div>
+      <div class="admin-card">
+        <div class="admin-card-header"><div><h2>Agregar día no laborable</h2><p>Los días no laborables son siempre de jornada completa y evitan nuevas generaciones en esa fecha.</p></div></div>
+        <div id="holiday-notice" class="admin-alert" hidden role="status" aria-live="polite"></div>
+        <form id="holiday-form" class="admin-stack">
+          <div class="admin-field"><label for="holiday-date">Fecha <span class="admin-required">*</span></label><input class="admin-input" id="holiday-date" type="date" required /></div>
+          <div class="admin-field"><label for="holiday-reason">Motivo</label><input class="admin-input" id="holiday-reason" maxlength="255" placeholder="Ej.: feriado departamental" /></div>
+          <button class="admin-button" id="holiday-submit" type="submit">Agregar día</button>
+        </form>
+      </div>
+    </div>
+    <div class="admin-card">
+      <div class="admin-card-header"><div><h2>Días no laborables</h2><p>Todos los registros de esta lista bloquean la jornada completa.</p></div><button class="admin-button admin-button-secondary" id="reload-holidays" type="button">Actualizar</button></div>
+      <div id="holidays-state" class="admin-loading" role="status">Cargando días…</div>
+      <div class="admin-table-region" id="holidays-table-wrap" tabindex="0" aria-label="Días no laborables, tabla desplazable horizontalmente" hidden><table class="admin-table"><caption>Días bloqueados de jornada completa</caption><thead><tr><th scope="col">Fecha</th><th scope="col">Motivo</th><th scope="col">Duración</th><th scope="col">Acciones</th></tr></thead><tbody id="holiday-rows"></tbody></table></div>
+    </div>
+  </section>
+
+  <dialog class="admin-dialog" id="slot-dialog" aria-labelledby="slot-dialog-title">
+    <form class="admin-dialog-form" id="slot-form">
+      <header class="admin-dialog-header"><div><h2 id="slot-dialog-title">Editar horario</h2><p id="slot-dialog-description"></p></div><button class="admin-dialog-close" type="button" data-dialog-close aria-label="Cerrar">×</button></header>
+      <div class="admin-dialog-body admin-stack">
+        <input id="slot-id" type="hidden" />
+        <div class="admin-form-grid">
+          <div class="admin-field"><label for="slot-capacity">Capacidad <span class="admin-required">*</span></label><input class="admin-input" id="slot-capacity" type="number" min="1" max="500" required /><span class="admin-help" id="slot-reserved-help"></span></div>
+          <div class="admin-field"><label for="slot-tribute">Tributo</label><select class="admin-select" id="slot-tribute"><option value="">Sin tributo</option></select></div>
+          <div class="admin-field"><label for="slot-location">Sede</label><select class="admin-select" id="slot-location"><option value="">Sin sede</option></select></div>
+          <label class="admin-check"><input id="slot-blocked" type="checkbox" /><span><strong>Horario bloqueado</strong><small>No admite nuevas reservas.</small></span></label>
+          <div class="admin-field admin-field-full"><label for="slot-block-reason">Motivo del bloqueo</label><input class="admin-input" id="slot-block-reason" maxlength="255" /></div>
+          <div class="admin-field admin-field-full"><label for="slot-notes">Notas internas</label><textarea class="admin-textarea" id="slot-notes" maxlength="255"></textarea></div>
+        </div>
+        <div id="slot-dialog-notice" class="admin-alert" hidden role="alert"></div>
+      </div>
+      <footer class="admin-dialog-footer"><button class="admin-button admin-button-secondary" type="button" data-dialog-close>Cancelar</button><button class="admin-button" id="slot-save" type="submit">Guardar cambios</button></footer>
+    </form>
+  </dialog>
+
+  <dialog class="admin-dialog" id="rule-dialog" aria-labelledby="rule-dialog-title">
+    <form class="admin-dialog-form" id="rule-form">
+      <header class="admin-dialog-header"><div><h2 id="rule-dialog-title">Nueva regla</h2><p>Guardá un patrón reutilizable; después podrás generar sus horarios.</p></div><button class="admin-dialog-close" type="button" data-dialog-close aria-label="Cerrar">×</button></header>
+      <div class="admin-dialog-body admin-stack">
+        <input id="rule-id" type="hidden" />
+        <div class="admin-form-grid">
+          <div class="admin-field admin-field-full"><label for="rule-name">Nombre <span class="admin-required">*</span></label><input class="admin-input" id="rule-name" maxlength="160" required placeholder="Ej.: Atención de invierno" /></div>
+          <div class="admin-field"><label for="rule-start-date">Fecha inicial <span class="admin-required">*</span></label><input class="admin-input" id="rule-start-date" type="date" required /></div>
+          <div class="admin-field"><label for="rule-end-date">Fecha final <span class="admin-required">*</span></label><input class="admin-input" id="rule-end-date" type="date" required /></div>
+          <div class="admin-field"><label for="rule-start-time">Hora inicial <span class="admin-required">*</span></label><input class="admin-input" id="rule-start-time" type="time" required /></div>
+          <div class="admin-field"><label for="rule-end-time">Hora final <span class="admin-required">*</span></label><input class="admin-input" id="rule-end-time" type="time" required /></div>
+          <div class="admin-field"><label for="rule-duration">Duración en minutos <span class="admin-required">*</span></label><input class="admin-input" id="rule-duration" type="number" min="5" max="480" required /></div>
+          <div class="admin-field"><label for="rule-capacity">Cupo por horario <span class="admin-required">*</span></label><input class="admin-input" id="rule-capacity" type="number" min="1" max="500" required /></div>
+          <div class="admin-field"><label for="rule-location">Sede</label><select class="admin-select" id="rule-location"><option value="">Sin sede asignada</option></select></div>
+          <div class="admin-field"><label for="rule-team">Equipo</label><input class="admin-input" id="rule-team" maxlength="120" placeholder="Opcional" /></div>
+          <div class="admin-field admin-field-full"><span class="admin-field-label" id="rule-weekdays-label">Días de atención <span class="admin-required">*</span></span><div class="admin-choice-grid" id="rule-weekdays" role="group" aria-labelledby="rule-weekdays-label"></div><span class="admin-error" id="rule-weekdays-error" hidden>Seleccioná al menos un día.</span></div>
+          <label class="admin-check"><input id="rule-all" type="checkbox" /><span><strong>Aplicar a todos los tributos</strong><small>La regla incluirá todos los tributos.</small></span></label>
+          <label class="admin-check"><input id="rule-active" type="checkbox" checked /><span><strong>Regla activa</strong><small>Las reglas inactivas se conservan sin uso operativo.</small></span></label>
+          <div class="admin-field admin-field-full"><span class="admin-field-label" id="rule-tributes-label">Tributos <span class="admin-required">*</span></span><div class="admin-choice-grid" id="rule-tributes" role="group" aria-labelledby="rule-tributes-label"></div><span class="admin-error" id="rule-tributes-error" hidden>Seleccioná al menos un tributo o aplicá a todos.</span></div>
+        </div>
+        <div id="rule-dialog-notice" class="admin-alert" hidden role="alert"></div>
+      </div>
+      <footer class="admin-dialog-footer"><button class="admin-button admin-button-secondary" type="button" data-dialog-close>Cancelar</button><button class="admin-button" id="rule-save" type="submit">Crear regla</button></footer>
+    </form>
+  </dialog>
+
+  <dialog class="admin-dialog" id="block-date-dialog" aria-labelledby="block-date-title">
+    <form class="admin-dialog-form" id="block-date-form">
+      <header class="admin-dialog-header"><div><h2 id="block-date-title">Bloquear fecha</h2><p>Esta acción bloquea horarios existentes; no crea un día no laborable.</p></div><button class="admin-dialog-close" type="button" data-dialog-close aria-label="Cerrar">×</button></header>
+      <div class="admin-dialog-body admin-stack">
+        <div class="admin-field"><label for="block-date">Fecha <span class="admin-required">*</span></label><input class="admin-input" id="block-date" type="date" required /></div>
+        <div class="admin-field"><label for="block-tribute">Tributo</label><select class="admin-select" id="block-tribute"><option value="">Todos los tributos</option></select></div>
+        <div class="admin-field"><label for="block-reason">Motivo</label><input class="admin-input" id="block-reason" maxlength="255" placeholder="Bloqueado desde el panel" /></div>
+        <div id="block-date-notice" class="admin-alert" hidden role="alert"></div>
+      </div>
+      <footer class="admin-dialog-footer"><button class="admin-button admin-button-secondary" type="button" data-dialog-close>Cancelar</button><button class="admin-button admin-button-warning" id="block-date-submit" type="submit">Bloquear horarios</button></footer>
+    </form>
+  </dialog>
+
+  <dialog class="admin-dialog" id="confirm-dialog" aria-labelledby="confirm-title" aria-describedby="confirm-message">
+    <form class="admin-dialog-form" method="dialog">
+      <header class="admin-dialog-header"><div><h2 id="confirm-title">Confirmar acción</h2><p id="confirm-message"></p></div><button class="admin-dialog-close" type="button" data-dialog-close aria-label="Cerrar">×</button></header>
+      <div class="admin-dialog-body"><div id="confirm-detail" class="admin-alert is-warning"></div></div>
+      <footer class="admin-dialog-footer"><button class="admin-button admin-button-secondary" type="button" data-dialog-close>Cancelar</button><button class="admin-button admin-button-danger" id="confirm-action" type="button">Confirmar</button></footer>
+    </form>
+  </dialog>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  'use strict';
+
+  const ui = window.AdminUI;
+  const weekdays = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+  const state = { tributes: [], locations: [], slots: [], rules: [], holidays: [], bulkStep: 1, confirmAction: null };
+  const byId = (id) => document.getElementById(id);
+  const value = (id) => byId(id).value;
+  const numberOrNull = (id) => value(id) ? Number(value(id)) : null;
+
+  function element(tag, className, text) {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text != null) node.textContent = String(text);
+    return node;
+  }
+
+  function option(select, optionValue, label) {
+    const node = document.createElement('option');
+    node.value = String(optionValue);
+    node.textContent = label;
+    select.appendChild(node);
+  }
+
+  function setDataState(name, mode, message) {
+    const status = byId(name + '-state');
+    const wrap = byId(name + '-table-wrap');
+    status.className = mode === 'loading' ? 'admin-loading' : mode === 'error' ? 'admin-error-state' : 'admin-empty';
+    status.textContent = message;
+    status.hidden = mode === 'ready';
+    wrap.hidden = mode !== 'ready';
+  }
+
+  function getItems(data) {
+    if (Array.isArray(data)) return data;
+    return data && Array.isArray(data.items) ? data.items : [];
+  }
+
+  function displayName(items, id, fallback) {
+    const match = items.find((item) => String(item.id) === String(id));
+    return match ? match.name : fallback;
+  }
+
+  function formatTime(time) {
+    return time ? String(time).slice(0, 5) : 'Sin hora';
+  }
+
+  function selectedValues(containerId) {
+    return Array.from(byId(containerId).querySelectorAll('input:checked')).map((input) => Number(input.value));
+  }
+
+  function buildChoices(containerId, prefix, choices, selected) {
+    const container = byId(containerId);
+    const chosen = new Set((selected || []).map(Number));
+    container.replaceChildren();
+    choices.forEach((choice) => {
+      const wrap = element('div', 'admin-choice');
+      const input = document.createElement('input');
+      const label = document.createElement('label');
+      input.type = 'checkbox';
+      input.id = prefix + '-' + choice.value;
+      input.value = choice.value;
+      input.checked = chosen.has(Number(choice.value));
+      label.htmlFor = input.id;
+      label.textContent = choice.label;
+      wrap.append(input, label);
+      container.appendChild(wrap);
+    });
+  }
+
+  function populateReferenceData() {
+    ['slot-filter-tribute', 'slot-tribute', 'block-tribute'].forEach((id) => {
+      const select = byId(id);
+      while (select.options.length > 1) select.remove(1);
+      state.tributes.forEach((item) => option(select, item.id, item.name));
+    });
+    ['bulk-location', 'rule-location', 'slot-location'].forEach((id) => {
+      const select = byId(id);
+      while (select.options.length > 1) select.remove(1);
+      state.locations.forEach((item) => option(select, item.id, item.name));
+    });
+    const tributeChoices = state.tributes.filter((item) => item.is_active !== false).map((item) => ({ value: item.id, label: item.name }));
+    buildChoices('bulk-tributes', 'bulk-tribute', tributeChoices, []);
+    buildChoices('rule-tributes', 'rule-tribute', tributeChoices, []);
+    toggleTributeChoices('bulk-all', 'bulk-tributes');
+  }
+
+  async function loadReferenceData() {
+    try {
+      const results = await Promise.all([
+        ui.request('/api/admin/tribute-types?per_page=200&include_inactive=true'),
+        ui.request('/api/admin/locations')
+      ]);
+      state.tributes = getItems(results[0]);
+      state.locations = getItems(results[1]);
+      populateReferenceData();
+    } catch (error) {
+      ui.notify(error.message, 'error');
+    }
+  }
+
+  function activateTab(tab) {
+    document.querySelectorAll('[role="tab"]').forEach((item) => {
+      const active = item === tab;
+      item.setAttribute('aria-selected', String(active));
+      item.tabIndex = active ? 0 : -1;
+      byId(item.getAttribute('aria-controls')).hidden = !active;
+    });
+  }
+
+  const tabs = Array.from(document.querySelectorAll('[role="tab"]'));
+  tabs.forEach((tab, index) => {
+    tab.addEventListener('click', () => activateTab(tab));
+    tab.addEventListener('keydown', (event) => {
+      let next = null;
+      if (event.key === 'ArrowRight') next = (index + 1) % tabs.length;
+      if (event.key === 'ArrowLeft') next = (index - 1 + tabs.length) % tabs.length;
+      if (event.key === 'Home') next = 0;
+      if (event.key === 'End') next = tabs.length - 1;
+      if (next == null) return;
+      event.preventDefault();
+      activateTab(tabs[next]);
+      tabs[next].focus();
+    });
+  });
+
+  function actionButton(label, handler, style) {
+    const button = element('button', 'admin-button admin-button-small ' + (style || 'admin-button-secondary'), label);
+    button.type = 'button';
+    button.addEventListener('click', handler);
+    return button;
+  }
+
+  function cell(row, text, className) {
+    const node = element('td', className, text);
+    row.appendChild(node);
+    return node;
+  }
+
+  async function loadSlots() {
+    setDataState('slots', 'loading', 'Cargando horarios…');
+    const params = new URLSearchParams({ per_page: '200' });
+    if (value('slot-filter-tribute')) params.set('tribute_type_id', value('slot-filter-tribute'));
+    if (value('slot-filter-from')) params.set('from', value('slot-filter-from'));
+    if (value('slot-filter-to')) params.set('to', value('slot-filter-to'));
+    if (byId('slot-filter-blocked').checked) params.set('only_blocked', 'true');
+    try {
+      const data = await ui.request('/api/admin/availability/slots?' + params.toString());
+      state.slots = getItems(data);
+      renderSlots(data && data.total);
+    } catch (error) {
+      setDataState('slots', 'error', error.message);
+    }
+  }
+
+  function renderSlots(total) {
+    if (!state.slots.length) return setDataState('slots', 'empty', 'No hay horarios para los filtros seleccionados.');
+    const body = byId('slot-rows');
+    body.replaceChildren();
+    state.slots.forEach((slot) => {
+      const row = document.createElement('tr');
+      const dateCell = cell(row, '');
+      dateCell.append(element('strong', '', ui.formatDate(slot.date)), document.createElement('br'), element('span', 'admin-muted admin-nowrap', formatTime(slot.start_time) + ' a ' + formatTime(slot.end_time)));
+      const assignment = cell(row, '');
+      assignment.append(element('strong', '', displayName(state.tributes, slot.tribute_type_id, slot.tribute_type_id ? 'Tributo #' + slot.tribute_type_id : 'Todos los tributos')), document.createElement('br'), element('span', 'admin-muted', displayName(state.locations, slot.location_id, slot.location_id ? 'Sede #' + slot.location_id : 'Sin sede')));
+      const capacity = cell(row, '');
+      capacity.append(element('strong', '', String(slot.capacity ?? '—') + ' cupos'), document.createElement('br'), element('span', 'admin-muted', String(slot.reserved_count ?? 0) + ' reservados · ' + String(slot.remaining ?? Math.max(0, Number(slot.capacity || 0) - Number(slot.reserved_count || 0))) + ' libres'));
+      const status = cell(row, '');
+      status.append(element('span', 'admin-badge ' + (slot.is_blocked ? 'admin-badge-danger' : 'admin-badge-success'), slot.is_blocked ? 'Bloqueado' : 'Disponible'));
+      if (slot.block_reason) status.append(document.createElement('br'), element('span', 'admin-muted', slot.block_reason));
+      const actions = cell(row, '');
+      const buttons = element('div', 'admin-row-actions');
+      buttons.append(
+        actionButton('Editar', () => openSlotDialog(slot)),
+        actionButton(slot.is_blocked ? 'Desbloquear' : 'Bloquear', (event) => toggleSlot(slot, event.currentTarget), slot.is_blocked ? 'admin-button-secondary' : 'admin-button-warning'),
+        actionButton('Eliminar', (event) => confirmDeleteSlot(slot, event.currentTarget), 'admin-button-danger')
+      );
+      actions.appendChild(buttons);
+      body.appendChild(row);
+    });
+    const shownTotal = Number.isFinite(Number(total)) ? Number(total) : state.slots.length;
+    byId('slots-caption').textContent = shownTotal + ' horarios encontrados' + (shownTotal > state.slots.length ? '; se muestran los primeros ' + state.slots.length : '');
+    setDataState('slots', 'ready', '');
+  }
+
+  function openSlotDialog(slot) {
+    byId('slot-id').value = slot.id;
+    byId('slot-dialog-description').textContent = ui.formatDateLong(slot.date) + ', ' + formatTime(slot.start_time) + ' a ' + formatTime(slot.end_time);
+    byId('slot-capacity').value = slot.capacity ?? 1;
+    byId('slot-capacity').min = Math.max(1, Number(slot.reserved_count || 0));
+    byId('slot-reserved-help').textContent = 'Reservas actuales: ' + String(slot.reserved_count ?? 0) + '. La capacidad no puede ser menor.';
+    byId('slot-tribute').value = slot.tribute_type_id ?? '';
+    byId('slot-location').value = slot.location_id ?? '';
+    byId('slot-blocked').checked = Boolean(slot.is_blocked);
+    byId('slot-block-reason').value = slot.block_reason || '';
+    byId('slot-notes').value = slot.notes || '';
+    ui.clearNotice('slot-dialog-notice');
+    ui.openDialog(byId('slot-dialog'));
+  }
+
+  byId('slot-form').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (!event.currentTarget.reportValidity()) return;
+    const button = byId('slot-save');
+    const payload = {
+      capacity: Number(value('slot-capacity')),
+      is_blocked: byId('slot-blocked').checked,
+      block_reason: value('slot-block-reason') || null,
+      notes: value('slot-notes') || null,
+      tribute_type_id: numberOrNull('slot-tribute'),
+      location_id: numberOrNull('slot-location')
+    };
+    ui.setBusy(button, true, 'Guardando…');
+    try {
+      await ui.request('/api/admin/availability/slots/' + value('slot-id'), { method: 'PATCH', body: payload });
+      ui.closeDialog(byId('slot-dialog'));
+      ui.notify('Horario actualizado.', 'success');
+      await loadSlots();
+    } catch (error) {
+      ui.notify(error.message, 'error', 'slot-dialog-notice');
+    } finally {
+      ui.setBusy(button, false);
+    }
+  });
+
+  async function toggleSlot(slot, button) {
+    if (button) ui.setBusy(button, true, slot.is_blocked ? 'Desbloqueando…' : 'Bloqueando…');
+    try {
+      await ui.request('/api/admin/availability/slots/' + slot.id, {
+        method: 'PATCH',
+        body: { is_blocked: !slot.is_blocked, block_reason: slot.is_blocked ? null : (slot.block_reason || 'Bloqueado desde el panel') }
+      });
+      ui.notify(slot.is_blocked ? 'Horario desbloqueado.' : 'Horario bloqueado.', 'success');
+      await loadSlots();
+    } catch (error) {
+      ui.notify(error.message, 'error');
+      if (button) ui.setBusy(button, false);
+    }
+  }
+
+  function openConfirm(title, message, detail, label, action, trigger) {
+    byId('confirm-title').textContent = title;
+    byId('confirm-message').textContent = message;
+    byId('confirm-detail').textContent = detail;
+    byId('confirm-detail').className = 'admin-alert is-warning';
+    byId('confirm-action').textContent = label;
+    state.confirmAction = action;
+    ui.openDialog(byId('confirm-dialog'), trigger);
+  }
+
+  byId('confirm-action').addEventListener('click', async (event) => {
+    if (!state.confirmAction) return;
+    const action = state.confirmAction;
+    ui.setBusy(event.currentTarget, true, 'Procesando…');
+    try {
+      await action();
+      state.confirmAction = null;
+      ui.closeDialog(byId('confirm-dialog'));
+    } catch (error) {
+      byId('confirm-detail').textContent = error.message + ' Podés intentarlo nuevamente de forma segura.';
+      byId('confirm-detail').className = 'admin-alert is-error';
+    } finally {
+      ui.setBusy(event.currentTarget, false);
+    }
+  });
+
+  function confirmDeleteSlot(slot, trigger) {
+    openConfirm('Eliminar horario', '¿Querés eliminar este horario?', 'No se puede eliminar si tiene reservas activas.', 'Eliminar horario', async () => {
+      await ui.request('/api/admin/availability/slots/' + slot.id, { method: 'DELETE' });
+      ui.notify('Horario eliminado.', 'success');
+      await loadSlots();
+    }, trigger);
+  }
+
+  function setWizardStep(step) {
+    state.bulkStep = step;
+    document.querySelectorAll('.admin-wizard-panel').forEach((panel) => { panel.hidden = Number(panel.dataset.step) !== step; });
+    document.querySelectorAll('[data-step-label]').forEach((label) => {
+      const number = Number(label.dataset.stepLabel);
+      label.classList.toggle('is-active', number === step);
+      label.classList.toggle('is-complete', number < step);
+      if (number === step) label.setAttribute('aria-current', 'step');
+      else label.removeAttribute('aria-current');
+    });
+    byId('bulk-back').hidden = step === 1;
+    byId('bulk-next').hidden = step === 4;
+    byId('bulk-submit').hidden = step !== 4;
+    if (step === 4) renderBulkSummary();
+    const heading = document.querySelector('.admin-wizard-panel[data-step="' + step + '"] legend');
+    if (heading) heading.focus({ preventScroll: true });
+    byId('bulk-form').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function validateDates(prefix) {
+    const start = byId(prefix + '-start-date');
+    const end = byId(prefix + '-end-date');
+    end.setCustomValidity(start.value && end.value && end.value < start.value ? 'La fecha final debe ser igual o posterior a la inicial.' : '');
+  }
+
+  function validateTimes(prefix) {
+    const start = byId(prefix + '-start-time');
+    const end = byId(prefix + '-end-time');
+    end.setCustomValidity(start.value && end.value && end.value <= start.value ? 'La hora final debe ser posterior a la inicial.' : '');
+  }
+
+  function validateBulkStep(step) {
+    if (step === 1) {
+      const valid = byId('bulk-all').checked || selectedValues('bulk-tributes').length > 0;
+      byId('bulk-tributes-error').hidden = valid;
+      byId('bulk-tributes').setAttribute('aria-invalid', String(!valid));
+      return valid;
+    }
+    if (step === 2) {
+      validateDates('bulk');
+      const validDays = selectedValues('bulk-weekdays').length > 0;
+      byId('bulk-weekdays-error').hidden = validDays;
+      byId('bulk-weekdays').setAttribute('aria-invalid', String(!validDays));
+      return byId('bulk-start-date').reportValidity() && byId('bulk-end-date').reportValidity() && validDays;
+    }
+    if (step === 3) {
+      validateTimes('bulk');
+      return ['bulk-start-time', 'bulk-end-time', 'bulk-duration', 'bulk-capacity'].every((id) => byId(id).reportValidity());
+    }
+    return true;
+  }
+
+  function dateFromInput(input) {
+    const parts = input.split('-').map(Number);
+    return new Date(parts[0], parts[1] - 1, parts[2]);
+  }
+
+  function localDate(date) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return year + '-' + month + '-' + day;
+  }
+
+  function minutes(time) {
+    const parts = time.split(':').map(Number);
+    return parts[0] * 60 + parts[1];
+  }
+
+  function estimateBulk() {
+    const selectedDays = new Set(selectedValues('bulk-weekdays'));
+    let matchingDates = 0;
+    const start = dateFromInput(value('bulk-start-date'));
+    const end = dateFromInput(value('bulk-end-date'));
+    for (let cursor = new Date(start); cursor <= end; cursor.setDate(cursor.getDate() + 1)) {
+      const mondayBasedDay = (cursor.getDay() + 6) % 7;
+      if (selectedDays.has(mondayBasedDay)) matchingDates += 1;
+    }
+    const perDay = Math.max(0, Math.floor((minutes(value('bulk-end-time')) - minutes(value('bulk-start-time'))) / Number(value('bulk-duration'))));
+    const tributeCount = byId('bulk-all').checked ? Math.max(1, state.tributes.length) : selectedValues('bulk-tributes').length;
+    return matchingDates * perDay * tributeCount;
+  }
+
+  function summaryItem(label, text) {
+    const item = element('div', 'admin-summary-item');
+    item.append(element('span', '', label), element('strong', '', text));
+    return item;
+  }
+
+  function renderBulkSummary() {
+    const selectedDayNames = selectedValues('bulk-weekdays').map((day) => weekdays[day]).join(', ');
+    const selectedTributes = byId('bulk-all').checked ? 'Todos los tributos' : selectedValues('bulk-tributes').map((id) => displayName(state.tributes, id, '#' + id)).join(', ');
+    const summary = byId('bulk-summary');
+    summary.replaceChildren(
+      summaryItem('Periodo', ui.formatDate(value('bulk-start-date')) + ' a ' + ui.formatDate(value('bulk-end-date'))),
+      summaryItem('Días', selectedDayNames),
+      summaryItem('Horario', value('bulk-start-time') + ' a ' + value('bulk-end-time') + ' · ' + value('bulk-duration') + ' min'),
+      summaryItem('Capacidad', value('bulk-capacity') + ' personas por horario'),
+      summaryItem('Sede', displayName(state.locations, value('bulk-location'), 'Sin sede asignada')),
+      summaryItem('Tributos', selectedTributes),
+      summaryItem('Estimación del navegador', estimateBulk() + ' horarios potenciales')
+    );
+  }
+
+  byId('bulk-next').addEventListener('click', () => { if (validateBulkStep(state.bulkStep)) setWizardStep(state.bulkStep + 1); });
+  byId('bulk-back').addEventListener('click', () => setWizardStep(state.bulkStep - 1));
+  document.querySelectorAll('[data-date-days]').forEach((button) => button.addEventListener('click', () => {
+    const start = new Date();
+    const end = new Date();
+    end.setDate(end.getDate() + Number(button.dataset.dateDays) - 1);
+    byId('bulk-start-date').value = localDate(start);
+    byId('bulk-end-date').value = localDate(end);
+    byId('bulk-weekdays').querySelectorAll('input').forEach((input) => { input.checked = Number(input.value) < 5; });
+  }));
+  document.querySelectorAll('[data-duration]').forEach((button) => button.addEventListener('click', () => { byId('bulk-duration').value = button.dataset.duration; }));
+
+  function toggleTributeChoices(allId, containerId) {
+    const disabled = byId(allId).checked;
+    byId(containerId).querySelectorAll('input').forEach((input) => {
+      input.disabled = disabled;
+      if (disabled) input.checked = true;
+    });
+  }
+  byId('bulk-all').addEventListener('change', () => toggleTributeChoices('bulk-all', 'bulk-tributes'));
+  byId('rule-all').addEventListener('change', () => toggleTributeChoices('rule-all', 'rule-tributes'));
+
+  byId('bulk-form').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (![1, 2, 3].every(validateBulkStep)) return;
+    const button = byId('bulk-submit');
+    const payload = {
+      start_date: value('bulk-start-date'), end_date: value('bulk-end-date'), weekdays: selectedValues('bulk-weekdays'),
+      start_time: value('bulk-start-time'), end_time: value('bulk-end-time'), slot_duration_minutes: Number(value('bulk-duration')),
+      capacity_per_slot: Number(value('bulk-capacity')), location_id: numberOrNull('bulk-location'), applies_to_all: byId('bulk-all').checked,
+      tribute_type_ids: selectedValues('bulk-tributes')
+    };
+    ui.setBusy(button, true, 'Creando horarios…');
+    ui.clearNotice('bulk-notice');
+    try {
+      const data = await ui.request('/api/admin/availability/slots/bulk-generate', { method: 'POST', body: payload });
+      const count = data && data.created_slots != null ? data.created_slots : 0;
+      ui.notify('Se crearon ' + count + ' horarios.', 'success', 'bulk-notice');
+      await loadSlots();
+    } catch (error) {
+      ui.notify(error.message + ' Revisá los datos antes de volver a intentar.', 'error', 'bulk-notice');
+    } finally {
+      ui.setBusy(button, false);
+    }
+  });
+
+  async function loadRules() {
+    setDataState('rules', 'loading', 'Cargando reglas…');
+    try {
+      const data = await ui.request('/api/admin/availability/rules?per_page=200');
+      state.rules = getItems(data);
+      renderRules();
+    } catch (error) {
+      setDataState('rules', 'error', error.message);
+    }
+  }
+
+  function renderRules() {
+    if (!state.rules.length) return setDataState('rules', 'empty', 'Todavía no hay reglas de disponibilidad.');
+    const body = byId('rule-rows');
+    body.replaceChildren();
+    state.rules.forEach((rule) => {
+      const row = document.createElement('tr');
+      const name = cell(row, '');
+      name.append(element('strong', '', rule.name || 'Regla sin nombre'), document.createElement('br'), element('span', 'admin-badge ' + (rule.is_active === false ? 'admin-badge-warning' : 'admin-badge-success'), rule.is_active === false ? 'Inactiva' : 'Activa'));
+      cell(row, ui.formatDate(rule.start_date) + ' a ' + ui.formatDate(rule.end_date) + '\n' + (rule.weekdays || []).map((day) => weekdays[day] || day).join(', '));
+      cell(row, formatTime(rule.start_time) + ' a ' + formatTime(rule.end_time) + '\n' + String(rule.slot_duration_minutes ?? '—') + ' min · cupo ' + String(rule.capacity_per_slot ?? '—'));
+      cell(row, (rule.applies_to_all ? 'Todos los tributos' : (rule.tribute_type_ids || []).map((id) => displayName(state.tributes, id, '#' + id)).join(', ') || 'Sin tributos') + '\n' + displayName(state.locations, rule.location_id, rule.location_id ? 'Sede #' + rule.location_id : 'Sin sede'));
+      const actions = cell(row, '');
+      const buttons = element('div', 'admin-row-actions');
+      buttons.append(actionButton('Editar', () => openRuleDialog(rule)), actionButton('Generar horarios', (event) => generateRule(rule, event.currentTarget)), actionButton('Eliminar', (event) => confirmDeleteRule(rule, event.currentTarget), 'admin-button-danger'));
+      actions.appendChild(buttons);
+      body.appendChild(row);
+    });
+    setDataState('rules', 'ready', '');
+  }
+
+  function resetRuleForm() {
+    byId('rule-form').reset();
+    byId('rule-id').value = '';
+    byId('rule-duration').value = '20';
+    byId('rule-capacity').value = '1';
+    byId('rule-start-time').value = '09:00';
+    byId('rule-end-time').value = '16:00';
+    byId('rule-active').checked = true;
+    buildChoices('rule-weekdays', 'rule-weekday', weekdays.map((label, index) => ({ value: index, label })), [0, 1, 2, 3, 4]);
+    buildChoices('rule-tributes', 'rule-tribute', state.tributes.map((item) => ({ value: item.id, label: item.name })), []);
+    toggleTributeChoices('rule-all', 'rule-tributes');
+    ui.clearNotice('rule-dialog-notice');
+  }
+
+  function openRuleDialog(rule) {
+    resetRuleForm();
+    byId('rule-dialog-title').textContent = rule ? 'Editar regla' : 'Nueva regla';
+    byId('rule-save').textContent = rule ? 'Guardar cambios' : 'Crear regla';
+    if (rule) {
+      byId('rule-id').value = rule.id;
+      byId('rule-name').value = rule.name || '';
+      byId('rule-start-date').value = rule.start_date || '';
+      byId('rule-end-date').value = rule.end_date || '';
+      byId('rule-start-time').value = formatTime(rule.start_time) === 'Sin hora' ? '' : formatTime(rule.start_time);
+      byId('rule-end-time').value = formatTime(rule.end_time) === 'Sin hora' ? '' : formatTime(rule.end_time);
+      byId('rule-duration').value = rule.slot_duration_minutes ?? 20;
+      byId('rule-capacity').value = rule.capacity_per_slot ?? 1;
+      byId('rule-location').value = rule.location_id ?? '';
+      byId('rule-team').value = rule.team || '';
+      byId('rule-all').checked = Boolean(rule.applies_to_all);
+      byId('rule-active').checked = rule.is_active !== false;
+      buildChoices('rule-weekdays', 'rule-weekday', weekdays.map((label, index) => ({ value: index, label })), rule.weekdays || []);
+      buildChoices('rule-tributes', 'rule-tribute', state.tributes.map((item) => ({ value: item.id, label: item.name })), rule.tribute_type_ids || []);
+      toggleTributeChoices('rule-all', 'rule-tributes');
+    }
+    ui.openDialog(byId('rule-dialog'));
+  }
+
+  function validateRule() {
+    validateDates('rule');
+    validateTimes('rule');
+    const daysValid = selectedValues('rule-weekdays').length > 0;
+    const tributesValid = byId('rule-all').checked || selectedValues('rule-tributes').length > 0;
+    byId('rule-weekdays-error').hidden = daysValid;
+    byId('rule-tributes-error').hidden = tributesValid;
+    return byId('rule-form').reportValidity() && daysValid && tributesValid;
+  }
+
+  byId('rule-form').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (!validateRule()) return;
+    const id = value('rule-id');
+    const button = byId('rule-save');
+    const payload = {
+      name: value('rule-name'), start_date: value('rule-start-date'), end_date: value('rule-end-date'), weekdays: selectedValues('rule-weekdays'),
+      start_time: value('rule-start-time'), end_time: value('rule-end-time'), slot_duration_minutes: Number(value('rule-duration')),
+      capacity_per_slot: Number(value('rule-capacity')), location_id: numberOrNull('rule-location'), team: value('rule-team') || null,
+      applies_to_all: byId('rule-all').checked, tribute_type_ids: selectedValues('rule-tributes'), is_active: byId('rule-active').checked
+    };
+    ui.setBusy(button, true, id ? 'Guardando…' : 'Creando…');
+    try {
+      const saved = await ui.request(id ? '/api/admin/availability/rules/' + id : '/api/admin/availability/rules', { method: id ? 'PATCH' : 'POST', body: payload });
+      ui.closeDialog(byId('rule-dialog'));
+      await loadRules();
+      if (id) ui.notify('Regla actualizada.', 'success', 'rule-notice');
+      else showRuleGenerateOffer(saved);
+    } catch (error) {
+      ui.notify(error.message, 'error', 'rule-dialog-notice');
+    } finally {
+      ui.setBusy(button, false);
+    }
+  });
+
+  function showRuleGenerateOffer(rule) {
+    const notice = byId('rule-notice');
+    notice.replaceChildren();
+    notice.className = 'admin-alert is-success';
+    notice.hidden = false;
+    notice.append(element('strong', '', 'Regla creada.'), document.createTextNode(' Ahora podés generar sus horarios. '));
+    if (rule && rule.id != null) notice.appendChild(actionButton('Generar ahora', (event) => generateRule(rule, event.currentTarget), 'admin-button-secondary'));
+  }
+
+  async function generateRule(rule, button) {
+    if (button) ui.setBusy(button, true, 'Generando…');
+    try {
+      const data = await ui.request('/api/admin/availability/rules/' + rule.id + '/generate-slots', { method: 'POST' });
+      const count = data && data.created_slots != null ? data.created_slots : 0;
+      ui.notify('Se generaron ' + count + ' horarios. Si el resultado fue 0, probablemente ya existían.', 'success', 'rule-notice');
+      await loadSlots();
+    } catch (error) {
+      ui.notify(error.message + ' Podés volver a intentarlo: los horarios existentes no se duplican.', 'error', 'rule-notice');
+    } finally {
+      if (button) ui.setBusy(button, false);
+    }
+  }
+
+  function confirmDeleteRule(rule, trigger) {
+    openConfirm('Eliminar regla', '¿Querés eliminar “' + (rule.name || 'esta regla') + '”?', 'La regla se elimina, pero los horarios que ya generó permanecen sin cambios.', 'Eliminar regla', async () => {
+      await ui.request('/api/admin/availability/rules/' + rule.id, { method: 'DELETE' });
+      ui.notify('Regla eliminada. Los horarios generados se conservaron.', 'success', 'rule-notice');
+      await loadRules();
+    }, trigger);
+  }
+
+  function openBlockDate(trigger) {
+    byId('block-date-form').reset();
+    byId('block-tribute').value = value('slot-filter-tribute');
+    byId('block-date').value = value('slot-filter-from');
+    ui.clearNotice('block-date-notice');
+    ui.openDialog(byId('block-date-dialog'), trigger);
+  }
+
+  byId('block-date-form').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (!event.currentTarget.reportValidity()) return;
+    const button = byId('block-date-submit');
+    const payload = { date: value('block-date'), tribute_type_id: numberOrNull('block-tribute'), reason: value('block-reason') };
+    ui.setBusy(button, true, 'Bloqueando…');
+    try {
+      const data = await ui.request('/api/admin/availability/slots/block', { method: 'POST', body: payload });
+      const count = data && data.blocked != null ? data.blocked : 0;
+      ui.closeDialog(byId('block-date-dialog'));
+      ui.notify('Se bloquearon ' + count + ' horarios.', count ? 'success' : 'warning');
+      await loadSlots();
+    } catch (error) {
+      ui.notify(error.message, 'error', 'block-date-notice');
+    } finally {
+      ui.setBusy(button, false);
+    }
+  });
+
+  async function loadHolidays() {
+    setDataState('holidays', 'loading', 'Cargando días…');
+    try {
+      state.holidays = getItems(await ui.request('/api/admin/availability/holidays'));
+      renderHolidays();
+    } catch (error) {
+      setDataState('holidays', 'error', error.message);
+    }
+  }
+
+  function renderHolidays() {
+    if (!state.holidays.length) return setDataState('holidays', 'empty', 'No hay días no laborables registrados.');
+    const body = byId('holiday-rows');
+    body.replaceChildren();
+    state.holidays.forEach((holiday) => {
+      const row = document.createElement('tr');
+      const date = cell(row, '');
+      date.appendChild(element('strong', '', ui.formatDateLong(holiday.date)));
+      cell(row, holiday.reason || 'Sin motivo indicado');
+      const duration = cell(row, '');
+      duration.appendChild(element('span', 'admin-badge admin-badge-warning', 'Día completo'));
+      const actions = cell(row, '');
+      actions.appendChild(actionButton('Eliminar', (event) => confirmDeleteHoliday(holiday, event.currentTarget), 'admin-button-danger'));
+      body.appendChild(row);
+    });
+    setDataState('holidays', 'ready', '');
+  }
+
+  byId('holiday-form').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (!event.currentTarget.reportValidity()) return;
+    const button = byId('holiday-submit');
+    ui.setBusy(button, true, 'Agregando…');
+    try {
+      await ui.request('/api/admin/availability/holidays', { method: 'POST', body: { date: value('holiday-date'), reason: value('holiday-reason') || null, is_full_day: true } });
+      event.currentTarget.reset();
+      ui.notify('Día no laborable agregado.', 'success', 'holiday-notice');
+      await Promise.all([loadHolidays(), loadSlots()]);
+    } catch (error) {
+      ui.notify(error.message, 'error', 'holiday-notice');
+    } finally {
+      ui.setBusy(button, false);
+    }
+  });
+
+  function confirmDeleteHoliday(holiday, trigger) {
+    openConfirm('Eliminar día no laborable', '¿Querés habilitar nuevamente el ' + ui.formatDateLong(holiday.date) + '?', 'Eliminar este registro no desbloquea automáticamente horarios individuales que se hayan bloqueado antes.', 'Eliminar día', async () => {
+      await ui.request('/api/admin/availability/holidays/' + holiday.id, { method: 'DELETE' });
+      ui.notify('Día no laborable eliminado.', 'success', 'holiday-notice');
+      await Promise.all([loadHolidays(), loadSlots()]);
+    }, trigger);
+  }
+
+  byId('slot-filters').addEventListener('submit', (event) => { event.preventDefault(); loadSlots(); });
+  byId('clear-slot-filters').addEventListener('click', () => { byId('slot-filters').reset(); loadSlots(); });
+  byId('reload-slots').addEventListener('click', loadSlots);
+  byId('reload-rules').addEventListener('click', loadRules);
+  byId('reload-holidays').addEventListener('click', loadHolidays);
+  byId('new-rule').addEventListener('click', () => openRuleDialog(null));
+  byId('open-block-date').addEventListener('click', (event) => openBlockDate(event.currentTarget));
+  byId('open-block-date-secondary').addEventListener('click', (event) => openBlockDate(event.currentTarget));
+
+  buildChoices('bulk-weekdays', 'bulk-weekday', weekdays.map((label, index) => ({ value: index, label })), [0, 1, 2, 3, 4]);
+  const today = new Date();
+  const monthEnd = new Date(today);
+  monthEnd.setDate(monthEnd.getDate() + 29);
+  byId('bulk-start-date').value = localDate(today);
+  byId('bulk-end-date').value = localDate(monthEnd);
+
+  (async function initialise() {
+    await loadReferenceData();
+    resetRuleForm();
+    await Promise.all([loadSlots(), loadRules(), loadHolidays()]);
+  }());
+}());
+</script>
+{% endblock %}

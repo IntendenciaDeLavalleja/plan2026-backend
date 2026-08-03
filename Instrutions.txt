@@ -1,0 +1,34 @@
+Crear entorno virtual:
+    > py -m venv venv
+
+Para activar el entorno virtual (desde la carpeta backend):
+    > venv\Scripts\Activate.ps1
+
+Para instalar dependencias:
+    > python -m pip install -r requirements.txt
+
+Para ejecutar migraciones:
+    (crear primero la base de datos y actualizar el env con nombre de la base de datos)
+    > flask db init
+    > flask db migrate -m "add books table"
+    > flask db upgrade
+
+Para crear un admin:
+    > python -m flask create-admin nombre-de-admin mail-de-admin contraseña-de-admin true/false-super-admin
+
+Los superadmin pueden crear otros usuarios desde:
+    > http://127.0.0.1:5000/admin/usuarios
+
+Los logs de actividad del sistema solo están disponibles para superadmin en:
+    > http://127.0.0.1:5000/admin/logs
+
+Para iniciar la app:
+    > python wsgi.py
+    > Panel administrativo del backend: http://127.0.0.1:5000/admin/login
+
+Para aplicar migraciones y cargar datos de ejemplo:
+    > python -m flask db upgrade
+    > python -m flask seed-data
+
+Para regenerar el entorno demo funcional (sedes, reglas, slots y reservas de ejemplo):
+    > python -m flask seed-data --force

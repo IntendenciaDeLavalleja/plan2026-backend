@@ -1,0 +1,342 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Tributos{% endblock %}
+{% block eyebrow %}Catálogo de trámites{% endblock %}
+{% block page_title %}Tributos{% endblock %}
+{% block page_description %}Administrá la información, los requisitos y la agenda de cada tipo de trámite.{% endblock %}
+{% block page_actions %}
+  <button class="admin-button admin-button-secondary" type="button" id="reload">Actualizar listado</button>
+{% endblock %}
+
+{% block content %}
+  <div class="admin-grid admin-grid-2">
+    <section class="admin-card" aria-labelledby="form-title">
+      <div class="admin-card-header">
+        <div>
+          <h2 id="form-title">Nuevo tributo</h2>
+          <p id="form-description">Completá los datos para agregar un trámite al catálogo.</p>
+        </div>
+      </div>
+      <div id="form-notice" class="admin-alert" hidden role="status" aria-live="polite"></div>
+      <form id="tribute-form" class="admin-stack" aria-describedby="form-description" novalidate>
+        <input type="hidden" id="id" />
+
+        <fieldset class="admin-form-section">
+          <legend>Información</legend>
+          <p class="admin-form-section-description">Datos que identifican el trámite en el sistema.</p>
+          <div class="admin-form-grid">
+            <div class="admin-field">
+              <label for="name">Nombre <span class="admin-required" aria-hidden="true">*</span></label>
+              <input class="admin-input" id="name" name="name" required minlength="2" maxlength="160" aria-describedby="name-help name-error" />
+              <span class="admin-help" id="name-help">Nombre visible para las personas que reservan.</span>
+              <span class="admin-error" id="name-error" hidden></span>
+            </div>
+            <div class="admin-field">
+              <label for="slug">Slug</label>
+              <input class="admin-input" id="slug" name="slug" aria-describedby="slug-help" placeholder="Ej.: contribucion-inmobiliaria" />
+              <span class="admin-help" id="slug-help">Identificador opcional para URLs e integraciones.</span>
+            </div>
+            <div class="admin-field">
+              <label for="icon_key">Ícono</label>
+              <input class="admin-input" id="icon_key" name="icon_key" value="document" aria-describedby="icon-help" />
+              <span class="admin-help" id="icon-help">Clave del ícono utilizado en la interfaz pública.</span>
+            </div>
+            <div class="admin-field admin-field-full">
+              <label for="description">Descripción</label>
+              <textarea class="admin-textarea" id="description" name="description" aria-describedby="description-help"></textarea>
+              <span class="admin-help" id="description-help">Resumen breve del trámite.</span>
+            </div>
+          </div>
+        </fieldset>
+
+        <fieldset class="admin-form-section">
+          <legend>Requisitos</legend>
+          <p class="admin-form-section-description">Documentación e identificadores necesarios para gestionar el trámite.</p>
+          <div class="admin-form-grid">
+            <div class="admin-field admin-field-full">
+              <label for="requirements_text">Texto de requisitos</label>
+              <textarea class="admin-textarea" id="requirements_text" name="requirements_text" aria-describedby="requirements-help"></textarea>
+              <span class="admin-help" id="requirements-help">Indicaciones que se muestran antes de reservar.</span>
+            </div>
+            <label class="admin-check" for="requires_padron">
+              <input id="requires_padron" name="requires_padron" type="checkbox" />
+              <span><strong>Requiere padrón</strong><small>Solicita el número de padrón.</small></span>
+            </label>
+            <label class="admin-check" for="requires_matricula">
+              <input id="requires_matricula" name="requires_matricula" type="checkbox" />
+              <span><strong>Requiere matrícula</strong><small>Solicita la matrícula del vehículo.</small></span>
+            </label>
+            <label class="admin-check" for="requires_document">
+              <input id="requires_document" name="requires_document" type="checkbox" checked />
+              <span><strong>Requiere documento</strong><small>Solicita documento de identidad.</small></span>
+            </label>
+          </div>
+        </fieldset>
+
+        <fieldset class="admin-form-section">
+          <legend>Agenda</legend>
+          <p class="admin-form-section-description">Duración, orden y disponibilidad del trámite.</p>
+          <div class="admin-form-grid">
+            <div class="admin-field">
+              <label for="default_duration_minutes">Duración predeterminada (minutos)</label>
+              <input class="admin-input" id="default_duration_minutes" name="default_duration_minutes" type="number" min="5" max="480" value="20" required aria-describedby="duration-help duration-error" />
+              <span class="admin-help" id="duration-help">Entre 5 y 480 minutos.</span>
+              <span class="admin-error" id="duration-error" hidden></span>
+            </div>
+            <div class="admin-field">
+              <label for="sort_order">Orden</label>
+              <input class="admin-input" id="sort_order" name="sort_order" type="number" value="100" required aria-describedby="order-help" />
+              <span class="admin-help" id="order-help">Los valores menores aparecen primero.</span>
+            </div>
+            <label class="admin-check admin-field-full" for="is_active">
+              <input id="is_active" name="is_active" type="checkbox" checked />
+              <span><strong>Tributo activo</strong><small>Permite mostrarlo y utilizarlo para nuevas reservas.</small></span>
+            </label>
+          </div>
+        </fieldset>
+
+        <div class="admin-actions">
+          <button class="admin-button" type="submit" id="save-button">Guardar tributo</button>
+          <button class="admin-button admin-button-secondary" type="button" id="reset-form">Restablecer formulario</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="admin-card" aria-labelledby="list-title">
+      <div class="admin-card-header">
+        <div>
+          <h2 id="list-title">Tributos registrados</h2>
+          <p>El listado incluye activos e inactivos.</p>
+        </div>
+      </div>
+      <div class="admin-table-region" tabindex="0" aria-label="Tributos registrados, tabla desplazable horizontalmente">
+        <table class="admin-table">
+          <caption>Tipos de trámite disponibles en el sistema</caption>
+          <thead><tr><th scope="col">Tributo</th><th scope="col">Agenda</th><th scope="col">Estado</th><th scope="col">Acciones</th></tr></thead>
+          <tbody id="rows"><tr><td colspan="4"><div class="admin-loading" role="status">Cargando tributos…</div></td></tr></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <dialog class="admin-dialog" id="delete-dialog" aria-labelledby="delete-title" aria-describedby="delete-description">
+    <form class="admin-dialog-form" method="dialog" id="delete-form">
+      <header class="admin-dialog-header">
+        <div><h2 id="delete-title">Eliminar tributo</h2><p>Revisá el impacto antes de continuar.</p></div>
+        <button class="admin-dialog-close" type="button" data-dialog-close aria-label="Cerrar">×</button>
+      </header>
+      <div class="admin-dialog-body admin-stack-sm">
+        <p>Vas a eliminar <strong id="delete-name"></strong>.</p>
+        <p class="admin-muted" id="delete-description">Si tiene turnos o franjas asociados, el sistema hará una baja lógica: quedará inactivo para nuevas reservas, pero conservará el historial. Si no tiene asociaciones, se eliminará definitivamente.</p>
+        <div id="delete-notice" class="admin-alert" hidden role="alert"></div>
+      </div>
+      <footer class="admin-dialog-footer">
+        <button class="admin-button admin-button-secondary" type="button" data-dialog-close>Cancelar</button>
+        <button class="admin-button admin-button-danger" type="submit" id="confirm-delete">Eliminar tributo</button>
+      </footer>
+    </form>
+  </dialog>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  'use strict';
+  const form = document.getElementById('tribute-form');
+  const rows = document.getElementById('rows');
+  const saveButton = document.getElementById('save-button');
+  const reloadButton = document.getElementById('reload');
+  const dialog = document.getElementById('delete-dialog');
+  const deleteForm = document.getElementById('delete-form');
+  const confirmDelete = document.getElementById('confirm-delete');
+  const byId = (id) => document.getElementById(id);
+  let items = [];
+  let deleteTarget = null;
+  let loading = false;
+  let submitting = false;
+
+  function cell(row, text) {
+    const td = document.createElement('td');
+    if (text !== undefined) td.textContent = text;
+    row.appendChild(td);
+    return td;
+  }
+
+  function resetForm() {
+    form.reset();
+    byId('id').value = '';
+    byId('icon_key').value = 'document';
+    byId('default_duration_minutes').value = '20';
+    byId('sort_order').value = '100';
+    byId('requires_document').checked = true;
+    byId('is_active').checked = true;
+    byId('form-title').textContent = 'Nuevo tributo';
+    byId('form-description').textContent = 'Completá los datos para agregar un trámite al catálogo.';
+    saveButton.textContent = 'Guardar tributo';
+    form.querySelectorAll('[aria-invalid]').forEach((field) => field.removeAttribute('aria-invalid'));
+    form.querySelectorAll('.admin-error').forEach((error) => { error.hidden = true; error.textContent = ''; });
+    AdminUI.clearNotice('form-notice');
+  }
+
+  function editItem(item) {
+    byId('id').value = item.id || '';
+    byId('name').value = item.name || '';
+    byId('slug').value = item.slug || '';
+    byId('description').value = item.description || '';
+    byId('icon_key').value = item.icon_key || '';
+    byId('requirements_text').value = item.requirements_text || '';
+    byId('default_duration_minutes').value = item.default_duration_minutes ?? 20;
+    byId('sort_order').value = item.sort_order ?? 100;
+    byId('requires_padron').checked = Boolean(item.requires_padron);
+    byId('requires_matricula').checked = Boolean(item.requires_matricula);
+    byId('requires_document').checked = item.requires_document !== false;
+    byId('is_active').checked = item.is_active !== false;
+    byId('form-title').textContent = 'Editar tributo';
+    byId('form-description').textContent = 'Actualizá los datos del trámite seleccionado.';
+    saveButton.textContent = 'Guardar cambios';
+    AdminUI.clearNotice('form-notice');
+    byId('form-title').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    byId('name').focus({ preventScroll: true });
+  }
+
+  function render() {
+    rows.replaceChildren();
+    if (!items.length) {
+      const tr = document.createElement('tr');
+      const td = cell(tr);
+      td.colSpan = 4;
+      const state = document.createElement('div');
+      state.className = 'admin-empty';
+      const strong = document.createElement('strong');
+      strong.textContent = 'No hay tributos registrados';
+      const text = document.createElement('span');
+      text.textContent = 'Creá el primer tributo con el formulario.';
+      state.append(strong, text);
+      td.appendChild(state);
+      rows.appendChild(tr);
+      return;
+    }
+    items.forEach((item) => {
+      const tr = document.createElement('tr');
+      const nameCell = cell(tr);
+      const strong = document.createElement('strong');
+      strong.textContent = item.name || 'Sin nombre';
+      const slug = document.createElement('div');
+      slug.className = 'admin-muted admin-code';
+      slug.textContent = item.slug || 'Sin slug';
+      const description = document.createElement('div');
+      description.className = 'admin-muted';
+      description.textContent = item.description || 'Sin descripción';
+      nameCell.append(strong, slug, description);
+      cell(tr, String(item.default_duration_minutes ?? 20) + ' min · orden ' + String(item.sort_order ?? 100));
+      const statusCell = cell(tr);
+      const badge = document.createElement('span');
+      badge.className = 'admin-badge ' + (item.is_active ? 'admin-badge-success' : 'admin-badge-warning');
+      badge.textContent = item.is_active ? 'Activo' : 'Inactivo';
+      statusCell.appendChild(badge);
+      const actionsCell = cell(tr);
+      const actions = document.createElement('div');
+      actions.className = 'admin-row-actions';
+      const edit = document.createElement('button');
+      edit.type = 'button';
+      edit.className = 'admin-button admin-button-secondary admin-button-small';
+      edit.textContent = 'Editar';
+      edit.addEventListener('click', () => editItem(item));
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'admin-button admin-button-danger admin-button-small';
+      remove.textContent = 'Eliminar';
+      remove.addEventListener('click', () => {
+        deleteTarget = item;
+        byId('delete-name').textContent = item.name || 'este tributo';
+        AdminUI.clearNotice('delete-notice');
+        AdminUI.openDialog(dialog, remove);
+      });
+      actions.append(edit, remove);
+      actionsCell.appendChild(actions);
+      rows.appendChild(tr);
+    });
+  }
+
+  async function load() {
+    if (loading) return;
+    loading = true;
+    AdminUI.setBusy(reloadButton, true, 'Actualizando…');
+    rows.innerHTML = '<tr><td colspan="4"><div class="admin-loading" role="status">Cargando tributos…</div></td></tr>';
+    try {
+      const data = await AdminUI.request('/api/admin/tribute-types?per_page=200&include_inactive=true');
+      items = data.items || [];
+      render();
+    } catch (error) {
+      rows.innerHTML = '<tr><td colspan="4"><div class="admin-error-state"><strong>No se pudo cargar el listado</strong><span>Intentá actualizar nuevamente.</span></div></td></tr>';
+      AdminUI.notify(error.message, 'error');
+    } finally {
+      loading = false;
+      AdminUI.setBusy(reloadButton, false);
+    }
+  }
+
+  form.addEventListener('submit', async function (event) {
+    event.preventDefault();
+    if (submitting) return;
+    if (!form.checkValidity()) {
+      form.reportValidity();
+      return;
+    }
+    submitting = true;
+    AdminUI.clearNotice('form-notice');
+    AdminUI.setBusy(saveButton, true, 'Guardando…');
+    const id = byId('id').value;
+    const payload = {
+      name: byId('name').value,
+      slug: byId('slug').value || null,
+      description: byId('description').value,
+      icon_key: byId('icon_key').value || 'document',
+      requirements_text: byId('requirements_text').value,
+      default_duration_minutes: Number(byId('default_duration_minutes').value || 20),
+      requires_padron: byId('requires_padron').checked,
+      requires_matricula: byId('requires_matricula').checked,
+      requires_document: byId('requires_document').checked,
+      is_active: byId('is_active').checked,
+      sort_order: Number(byId('sort_order').value || 100)
+    };
+    try {
+      await AdminUI.request(id ? '/api/admin/tribute-types/' + id : '/api/admin/tribute-types', {
+        method: id ? 'PATCH' : 'POST', body: payload
+      });
+      AdminUI.notify(id ? 'Tributo actualizado correctamente.' : 'Tributo creado correctamente.', 'success');
+      resetForm();
+      await load();
+    } catch (error) {
+      AdminUI.notify(error.message, 'error', 'form-notice');
+    } finally {
+      submitting = false;
+      AdminUI.setBusy(saveButton, false);
+      if (!byId('id').value) saveButton.textContent = 'Guardar tributo';
+    }
+  });
+
+  deleteForm.addEventListener('submit', async function (event) {
+    event.preventDefault();
+    if (!deleteTarget || confirmDelete.disabled) return;
+    AdminUI.setBusy(confirmDelete, true, 'Eliminando…');
+    try {
+      const result = await AdminUI.request('/api/admin/tribute-types/' + deleteTarget.id, { method: 'DELETE' });
+      AdminUI.closeDialog(dialog);
+      AdminUI.notify(result.soft_deleted ? 'El tributo se desactivó para conservar su historial.' : 'Tributo eliminado correctamente.', 'success');
+      if (String(byId('id').value) === String(deleteTarget.id)) resetForm();
+      deleteTarget = null;
+      await load();
+    } catch (error) {
+      AdminUI.notify(error.message, 'error', 'delete-notice');
+    } finally {
+      AdminUI.setBusy(confirmDelete, false);
+    }
+  });
+
+  byId('reset-form').addEventListener('click', resetForm);
+  reloadButton.addEventListener('click', load);
+  load();
+}());
+</script>
+{% endblock %}
