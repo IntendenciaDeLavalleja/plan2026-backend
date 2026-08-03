@@ -44,4 +44,4 @@ def test_mail_debug_is_disabled_by_default():
     app = create_app()
 
     assert app.config["MAIL_DEBUG"] is False
-    assert app.config["MAIL_TIMEOUT"] == 20
+    assert app.config["MAIL_TIMEOUT"] == 8

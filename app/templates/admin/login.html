@@ -158,7 +158,7 @@
             captcha: captchaInput.value
           };
           try {
-            const data = await AdminUI.request('admin/auth/login', { method: 'POST', body: payload });
+            const data = await AdminUI.request('admin/auth/login', { method: 'POST', body: payload, timeout: 30000 });
             document.getElementById('preview-email').textContent = 'Código enviado a ' + ((data && data.preview) || 'tu correo registrado') + '.';
             const testCode = data && data.test_code;
             testCodeNotice.hidden = !testCode;

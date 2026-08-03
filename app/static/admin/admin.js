@@ -62,11 +62,13 @@
   async function request(path, options) {
     const url = buildApiUrl(path);
     const supplied = options || {};
-    const timeout = supplied.timeout || API_TIMEOUT_MS;
-    const controller = supplied.signal ? null : new AbortController();
+    const timeout = Number(supplied.timeout || API_TIMEOUT_MS);
+    const externalSignal = supplied.signal;
+    const controller = new AbortController();
     const config = Object.assign({ credentials: 'same-origin' }, supplied);
     delete config.timeout;
-    if (controller) config.signal = controller.signal;
+    delete config.signal;
+    config.signal = controller.signal;
     config.headers = Object.assign({ Accept: 'application/json' }, config.headers || {});
     const requestId = window.crypto && typeof window.crypto.randomUUID === 'function'
       ? window.crypto.randomUUID()
@@ -80,67 +82,91 @@
       config.headers = Object.assign({ 'Content-Type': 'application/json' }, config.headers);
       if (typeof config.body !== 'string') config.body = JSON.stringify(config.body);
     }
-    let response;
-    const timeoutId = controller ? window.setTimeout(function () { controller.abort(); }, timeout) : null;
+    let timedOut = false;
+    let externallyAborted = false;
+    const abortFromExternalSignal = function () {
+      externallyAborted = true;
+      controller.abort(externalSignal.reason);
+    };
+    if (externalSignal) {
+      if (externalSignal.aborted) abortFromExternalSignal();
+      else externalSignal.addEventListener('abort', abortFromExternalSignal, { once: true });
+    }
+    const timeoutId = window.setTimeout(function () {
+      timedOut = true;
+      controller.abort(new DOMException('Request timeout', 'TimeoutError'));
+    }, Number.isFinite(timeout) && timeout > 0 ? timeout : API_TIMEOUT_MS);
     try {
-      response = await fetch(url, config);
+      const response = await fetch(url, config);
+      const contentType = response.headers.get('content-type') || '';
+      const rawBody = await response.text();
+      if (!contentType.includes('application/json')) {
+        console.error('Respuesta no JSON recibida de la API administrativa.', {
+          url: response.url,
+          status: response.status,
+          contentType: contentType,
+          bodyPreview: rawBody.slice(0, 500)
+        });
+        const contentError = new Error('El servidor respondió ' + response.status + ' con contenido no JSON.');
+        contentError.isAdminApiError = true;
+        contentError.status = response.status;
+        contentError.code = 'unexpected_content_type';
+        contentError.url = response.url;
+        contentError.requestId = response.headers.get('X-Request-ID') || requestId;
+        throw contentError;
+      }
+
+      let json;
+      try {
+        json = rawBody ? JSON.parse(rawBody) : null;
+      } catch (_error) {
+        console.error('Respuesta JSON inválida de la API administrativa.', {
+          url: response.url,
+          status: response.status,
+          bodyPreview: rawBody.slice(0, 500)
+        });
+        const parseError = new Error('El servidor devolvió una respuesta JSON inválida.');
+        parseError.isAdminApiError = true;
+        parseError.status = response.status;
+        parseError.code = 'invalid_json';
+        parseError.url = response.url;
+        parseError.requestId = response.headers.get('X-Request-ID') || requestId;
+        throw parseError;
+      }
+      if (!response.ok || !json.ok) {
+        const apiError = new Error(errorMessage(json, 'No se pudo completar la operación.'));
+        apiError.isAdminApiError = true;
+        apiError.code = json && json.error && json.error.code ? json.error.code : 'request_error';
+        apiError.status = response.status;
+        apiError.fields = json && json.error ? json.error.errors : null;
+        apiError.url = response.url;
+        apiError.data = json;
+        apiError.requestId = response.headers.get('X-Request-ID') || requestId;
+        if (response.status === 401 && window.location.pathname !== '/admin/login') {
+          window.location.assign('/admin/login');
+        }
+        throw apiError;
+      }
+      return json.data;
     } catch (error) {
+      if (error && error.isAdminApiError) throw error;
       console.error('Error de red en la API administrativa.', { url: url, message: error && error.message });
-      const networkError = new Error(error && error.name === 'AbortError' ? 'La operación tardó demasiado. Intentá nuevamente.' : 'No se pudo conectar con el sistema. Revisá la conexión e intentá nuevamente.');
-      networkError.code = error && error.name === 'AbortError' ? 'request_timeout' : 'network_error';
+      const timeoutError = timedOut && (error && (error.name === 'AbortError' || error.name === 'TimeoutError'));
+      const networkError = new Error(
+        timeoutError
+          ? 'El servidor demoró más de lo esperado. Esperá unos segundos e intentá nuevamente.'
+          : externallyAborted
+            ? 'La solicitud fue cancelada antes de completarse. Intentá nuevamente.'
+            : 'No se pudo conectar con el sistema. Revisá la conexión e intentá nuevamente.'
+      );
+      networkError.code = timeoutError ? 'request_timeout' : (externallyAborted ? 'request_aborted' : 'network_error');
       networkError.url = url;
+      networkError.requestId = requestId;
       throw networkError;
     } finally {
-      if (timeoutId) window.clearTimeout(timeoutId);
+      window.clearTimeout(timeoutId);
+      if (externalSignal) externalSignal.removeEventListener('abort', abortFromExternalSignal);
     }
-
-    const contentType = response.headers.get('content-type') || '';
-    const rawBody = await response.text();
-    if (!contentType.includes('application/json')) {
-      console.error('Respuesta no JSON recibida de la API administrativa.', {
-        url: response.url,
-        status: response.status,
-        contentType: contentType,
-        bodyPreview: rawBody.slice(0, 500)
-      });
-      const contentError = new Error('El servidor respondió ' + response.status + ' con contenido no JSON.');
-      contentError.status = response.status;
-      contentError.code = 'unexpected_content_type';
-      contentError.url = response.url;
-      contentError.requestId = response.headers.get('X-Request-ID') || requestId;
-      throw contentError;
-    }
-
-    let json;
-    try {
-      json = rawBody ? JSON.parse(rawBody) : null;
-    } catch (error) {
-      console.error('Respuesta JSON inválida de la API administrativa.', {
-        url: response.url,
-        status: response.status,
-        bodyPreview: rawBody.slice(0, 500)
-      });
-      const parseError = new Error('El servidor devolvió una respuesta JSON inválida.');
-      parseError.status = response.status;
-      parseError.code = 'invalid_json';
-      parseError.url = response.url;
-      parseError.requestId = response.headers.get('X-Request-ID') || requestId;
-      throw parseError;
-    }
-    if (!response.ok || !json.ok) {
-      const apiError = new Error(errorMessage(json, 'No se pudo completar la operación.'));
-      apiError.code = json && json.error && json.error.code ? json.error.code : 'request_error';
-      apiError.status = response.status;
-      apiError.fields = json && json.error ? json.error.errors : null;
-      apiError.url = response.url;
-      apiError.data = json;
-      apiError.requestId = response.headers.get('X-Request-ID') || requestId;
-      if (response.status === 401 && window.location.pathname !== '/admin/login') {
-        window.location.assign('/admin/login');
-      }
-      throw apiError;
-    }
-    return json.data;
   }
 
   function notify(text, kind, target) {

@@ -11,6 +11,7 @@ class CorsTestConfig(Config):
     SQLALCHEMY_DATABASE_URI = "sqlite://"
     CORS_ALLOWED_ORIGINS = [FRONTEND_ORIGIN]
     WTF_CSRF_ENABLED = False
+    RATELIMIT_STORAGE_URI = "memory://"
 
 
 def _client():

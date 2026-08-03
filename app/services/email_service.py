@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from flask import current_app
+from time import perf_counter
+
+from flask import current_app, g, has_request_context
 from flask_mail import Message
 
 from app.extensions import mail
@@ -18,12 +20,25 @@ def send_email(subject: str, recipients: list[str], html_body: str, text_body: s
     msg = Message(subject, recipients=recipients)
     msg.body = text_body or ""
     msg.html = html_body
+    started_at = perf_counter()
+    request_id = getattr(g, "request_id", None) if has_request_context() else None
     try:
         mail.send(msg)
-        current_app.logger.info("[email] accepted by SMTP for %s recipient(s)", len(recipients))
+        current_app.logger.info(
+            "smtp_delivery request_id=%s recipients=%s duration_ms=%s result=accepted",
+            request_id,
+            len(recipients),
+            int((perf_counter() - started_at) * 1000),
+        )
         return True
     except Exception as exc:  # pragma: no cover
-        current_app.logger.warning("[email] failed to send: %s", exc)
+        current_app.logger.warning(
+            "smtp_delivery request_id=%s recipients=%s duration_ms=%s result=failed error_type=%s",
+            request_id,
+            len(recipients),
+            int((perf_counter() - started_at) * 1000),
+            type(exc).__name__,
+        )
         return False
 
 

@@ -71,6 +71,10 @@ class TwoFactorCode(db.Model):
     consumed_at = db.Column(db.DateTime, nullable=True)
     created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
 
+    __table_args__ = (
+        db.Index("ix_two_factor_codes_login_lookup", "user_id", "purpose", "consumed_at", "created_at"),
+    )
+
     def __init__(self, user_id: int, code: str, purpose: str = "login", ttl_minutes: int = 10) -> None:
         from datetime import timedelta
 

@@ -3,6 +3,8 @@ import uuid
 
 from flask import Flask, g, redirect, request, url_for
 from flask_login import current_user
+from redis import Redis
+from redis.exceptions import ConnectionError as RedisConnectionError
 from sqlalchemy import text
 from flask_wtf.csrf import CSRFError
 from werkzeug.middleware.proxy_fix import ProxyFix
@@ -107,6 +109,12 @@ def create_app(config_class: type = Config) -> Flask:
             return fail("La verificación de seguridad expiró. Recargá la página e intentá nuevamente.", 400, code="csrf_failed")
         return err.description, 400
 
+    @app.errorhandler(RedisConnectionError)
+    def _on_redis_unavailable(_err: RedisConnectionError):
+        if request.path.startswith("/api/v1/"):
+            return fail("El control de acceso no está disponible. Intentá nuevamente.", 503, code="rate_limiter_unavailable")
+        return "Servicio temporalmente no disponible", 503
+
     # Register error handlers for clean JSON
     from .utils.responses import register_error_handlers
 
@@ -148,9 +156,12 @@ def create_app(config_class: type = Config) -> Flask:
     def healthz():
         try:
             db.session.execute(text("SELECT 1"))
-            return {"status": "ok", "database": "ok", "configuration": "loaded"}
+            rate_limit_uri = app.config["RATELIMIT_STORAGE_URI"]
+            if rate_limit_uri.startswith("redis"):
+                Redis.from_url(rate_limit_uri, socket_connect_timeout=1, socket_timeout=1).ping()
+            return {"status": "ok", "database": "ok", "rate_limiter": "ok", "configuration": "loaded"}
         except Exception:
-            app.logger.exception("Health check database query failed")
+            app.logger.exception("Health check dependency failed")
             return {"status": "unavailable"}, 503
 
     return app

@@ -31,7 +31,7 @@ class Config:
     MAIL_PASSWORD = os.environ.get("MAIL_PASSWORD")
     MAIL_DEFAULT_SENDER = os.environ.get("MAIL_DEFAULT_SENDER", "no-reply@lavalleja.gub.uy")
     MAIL_DEBUG = os.environ.get("MAIL_DEBUG", "False").lower() == "true"
-    MAIL_TIMEOUT = int(os.environ.get("MAIL_TIMEOUT", 20))
+    MAIL_TIMEOUT = int(os.environ.get("MAIL_TIMEOUT", 8))
 
     # Frontend & CORS
     FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:5173")

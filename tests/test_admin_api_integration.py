@@ -19,6 +19,7 @@ class IntegrationConfig(Config):
     SQLALCHEMY_DATABASE_URI = "sqlite://"
     CORS_ALLOWED_ORIGINS = ["https://plan2026.lavalleja.uy"]
     WTF_CSRF_ENABLED = False
+    RATELIMIT_STORAGE_URI = "memory://"
 
 
 @pytest.fixture()
