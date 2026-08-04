@@ -113,6 +113,10 @@ def create_app(config_class: type = Config) -> Flask:
     # Import models so SQLAlchemy registers them
     from . import models  # noqa: F401
 
+    @app.get("/healthz")
+    def healthz():
+        return jsonify({"status": "ok"}), 200
+
     return app
 
 
