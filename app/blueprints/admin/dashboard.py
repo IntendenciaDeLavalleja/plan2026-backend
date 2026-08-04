@@ -12,6 +12,7 @@ from app.extensions import db
 from app.models.appointment import Appointment
 from app.models.availability import AppointmentSlot, HolidayOrBlockedDay
 from app.models.tribute_type import TributeType
+from app.services import ticket_service
 from app.utils.responses import ok, paginated
 
 admin_dashboard_bp = Blueprint("admin_dashboard", __name__)
@@ -106,3 +107,10 @@ def health():
         "status": "ok",
         "now": datetime.now(timezone.utc).isoformat(),
     })
+
+
+@admin_dashboard_bp.get("/dashboard/today")
+@login_required
+def dashboard_today():
+    """Operational summary of the current day for the dashboard app."""
+    return ok(ticket_service.day_summary())

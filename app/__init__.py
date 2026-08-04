@@ -38,7 +38,7 @@ def create_app(config_class: type = Config) -> Flask:
         app,
         resources={r"/api/v1/*": {"origins": app.config["CORS_ALLOWED_ORIGINS"]}},
         supports_credentials=True,
-        allow_headers=["Content-Type", "Authorization", "Accept", "X-Requested-With"],
+        allow_headers=["Content-Type", "Authorization", "Accept", "X-Requested-With", "X-CSRFToken", "X-CSRF-Token"],
         methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         vary_header=True,
     )
@@ -129,6 +129,7 @@ def create_app(config_class: type = Config) -> Flask:
     from .blueprints.admin.appointments import admin_appointments_bp
     from .blueprints.admin.locations import admin_locations_bp
     from .blueprints.admin.access import admin_access_bp
+    from .blueprints.admin.tickets import admin_tickets_bp
     from .blueprints.admin.ui import admin_ui_bp
 
     csrf.exempt(public_bp)
@@ -142,6 +143,7 @@ def create_app(config_class: type = Config) -> Flask:
     app.register_blueprint(admin_appointments_bp, url_prefix="/api/v1/admin/appointments")
     app.register_blueprint(admin_locations_bp, url_prefix="/api/v1/admin/locations")
     app.register_blueprint(admin_access_bp, url_prefix="/api/v1/admin/access")
+    app.register_blueprint(admin_tickets_bp, url_prefix="/api/v1/admin/tickets")
     app.register_blueprint(admin_ui_bp)
 
     # Register CLI commands

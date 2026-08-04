@@ -10,3 +10,4 @@ from .availability import (  # noqa: F401
     availability_rule_tribute_types,
 )
 from .appointment import Appointment  # noqa: F401
+from .ticket_event import TicketEvent  # noqa: F401

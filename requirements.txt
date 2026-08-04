@@ -44,6 +44,7 @@ pytz==2026.1
 redis==5.2.1
 SQLAlchemy==2.0.46
 typing_extensions==4.15.0
+tzdata==2025.2
 urllib3==2.6.3
 webencodings==0.5.1
 Werkzeug==3.1.5

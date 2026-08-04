@@ -8,6 +8,7 @@ from time import perf_counter
 
 from flask import Blueprint, current_app, g, request, session
 from flask_login import current_user, login_user, logout_user
+from flask_wtf.csrf import generate_csrf
 from marshmallow import ValidationError
 
 from app.extensions import db, limiter
@@ -41,6 +42,16 @@ def _new_captcha() -> tuple[str, int]:
 def get_captcha():
     question, _answer = _new_captcha()
     return ok({"question": question})
+
+
+@admin_auth_bp.get("/csrf-token")
+def get_csrf_token():
+    """Emit a CSRF token for cross-origin admin clients (e.g. the dashboard app).
+
+    The token is bound to the session cookie, so the client must send both the
+    cookie and this token on every state-changing request.
+    """
+    return ok({"csrf_token": generate_csrf()})
 
 
 @admin_auth_bp.post("/login")

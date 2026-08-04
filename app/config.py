@@ -36,6 +36,9 @@ class Config:
     # Frontend & CORS
     FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:5173")
     CORS_ALLOWED_ORIGINS = _origins("CORS_ALLOWED_ORIGINS", "https://plan2026.lavalleja.uy")
+    DASHBOARD_ALLOWED_ORIGIN = (os.environ.get("DASHBOARD_ALLOWED_ORIGIN") or "").strip().rstrip("/")
+    if DASHBOARD_ALLOWED_ORIGIN and DASHBOARD_ALLOWED_ORIGIN not in CORS_ALLOWED_ORIGINS:
+        CORS_ALLOWED_ORIGINS = [*CORS_ALLOWED_ORIGINS, DASHBOARD_ALLOWED_ORIGIN]
 
     # Reservation code prefix
     RESERVATION_CODE_PREFIX = os.environ.get("RESERVATION_CODE_PREFIX", "IDL-AF")

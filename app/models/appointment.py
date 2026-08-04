@@ -9,7 +9,10 @@ def utcnow() -> datetime:
 APPOINTMENT_STATUSES = (
     "reserved",
     "confirmed",
+    "called",
+    "in_service",
     "attended",
+    "resolved",
     "cancelled",
     "no_show",
 )
