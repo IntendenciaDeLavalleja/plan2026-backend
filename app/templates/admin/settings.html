@@ -1,0 +1,326 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Configuración{% endblock %}
+{% block eyebrow %}Parámetros del sistema{% endblock %}
+{% block page_title %}Configuración{% endblock %}
+{% block page_description %}Editá los textos, datos de contacto y reglas generales de la agenda.{% endblock %}
+{% block page_actions %}<button class="admin-button admin-button-secondary" type="button" id="reload">Recargar valores</button>{% endblock %}
+
+{% block content %}
+  <div class="admin-alert is-warning" id="unsaved-notice" hidden role="status" aria-live="polite">
+    Hay cambios sin guardar. Cada campo se guarda de forma individual.
+  </div>
+  <div id="settings-content" class="admin-stack">
+    <section class="admin-card"><div class="admin-loading" role="status">Cargando configuración…</div></section>
+  </div>
+  <dialog class="admin-dialog" id="reload-dialog" aria-labelledby="reload-title" aria-describedby="reload-description">
+    <form class="admin-dialog-form" method="dialog" id="reload-form">
+      <header class="admin-dialog-header"><div><h2 id="reload-title">Descartar cambios</h2><p>Hay valores modificados que todavía no guardaste.</p></div><button class="admin-dialog-close" type="button" data-dialog-close aria-label="Cerrar">&times;</button></header>
+      <div class="admin-dialog-body"><p id="reload-description">Si recargás, se perderán todos los cambios pendientes de esta página.</p></div>
+      <footer class="admin-dialog-footer"><button class="admin-button admin-button-secondary" type="button" data-dialog-close>Seguir editando</button><button class="admin-button admin-button-danger" type="submit">Descartar y recargar</button></footer>
+    </form>
+  </dialog>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  'use strict';
+  const content = document.getElementById('settings-content');
+  const reloadButton = document.getElementById('reload');
+  const unsavedNotice = document.getElementById('unsaved-notice');
+  const reloadDialog = document.getElementById('reload-dialog');
+  const dirtyKeys = new Set();
+  const rowsByKey = new Map();
+  let loading = false;
+
+  const metadata = {
+    system_name: { label: 'Nombre del sistema', category: 'general' },
+    welcome_message: { label: 'Mensaje de bienvenida', category: 'general', multiline: true },
+    office_address: { label: 'Dirección de la oficina', category: 'contact' },
+    office_hours: { label: 'Horario de atención', category: 'contact' },
+    contact_email: { label: 'Correo electrónico', category: 'contact', inputType: 'email' },
+    contact_phone: { label: 'Teléfono', category: 'contact', inputType: 'tel' },
+    max_reservations_per_document: { label: 'Reservas activas por documento', category: 'booking' },
+    min_anticipation_hours: { label: 'Anticipación mínima (horas)', category: 'booking' },
+    max_anticipation_days: { label: 'Anticipación máxima (días)', category: 'booking' },
+    public_cancellation_enabled: { label: 'Cancelación pública', category: 'cancellation' },
+    legal_notice: { label: 'Aviso legal', category: 'communications', multiline: true },
+    receipt_footer: { label: 'Pie del comprobante', category: 'communications', multiline: true }
+  };
+  const categories = [
+    { id: 'general', title: 'Identidad y bienvenida', description: 'Nombre y mensaje principal del sistema.' },
+    { id: 'contact', title: 'Atención y contacto', description: 'Datos públicos de la oficina responsable.' },
+    { id: 'booking', title: 'Reglas de reserva', description: 'Límites y anticipación permitidos para agendar.' },
+    { id: 'cancellation', title: 'Cancelaciones', description: 'Opciones relacionadas con la cancelación de turnos.' },
+    { id: 'communications', title: 'Comunicaciones y comprobantes', description: 'Textos legales y contenido de los comprobantes.' },
+    { id: 'other', title: 'Otras configuraciones', description: 'Parámetros adicionales disponibles en el sistema.' }
+  ];
+
+  function normalizedJsonValue(value) {
+    if (typeof value !== 'string') return value == null ? {} : value;
+    const trimmed = value.trim();
+    if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (parsed && typeof parsed === 'object') return parsed;
+      } catch (error) {
+        return value;
+      }
+    }
+    return value;
+  }
+
+  function displayValue(item) {
+    if (item.value_type === 'bool') return item.value === true || String(item.value).toLowerCase() === 'true' ? 'true' : 'false';
+    if (item.value_type === 'json') return JSON.stringify(normalizedJsonValue(item.value), null, 2);
+    return item.value == null ? '' : String(item.value);
+  }
+
+  function createControl(item, id) {
+    const value = displayValue(item);
+    let control;
+    if (item.value_type === 'bool') {
+      control = document.createElement('select');
+      control.className = 'admin-select';
+      [['true', 'Habilitada'], ['false', 'Deshabilitada']].forEach(([optionValue, label]) => {
+        const option = document.createElement('option');
+        option.value = optionValue;
+        option.textContent = label;
+        control.appendChild(option);
+      });
+      control.value = value;
+    } else if (item.value_type === 'json' || (metadata[item.key] && metadata[item.key].multiline)) {
+      control = document.createElement('textarea');
+      control.className = 'admin-textarea';
+      control.value = value;
+      if (item.value_type === 'json') control.spellcheck = false;
+    } else {
+      control = document.createElement('input');
+      control.className = 'admin-input';
+      control.type = item.value_type === 'int' ? 'number' : ((metadata[item.key] && metadata[item.key].inputType) || 'text');
+      control.value = value;
+    }
+    control.id = id;
+    control.dataset.value = '';
+    control.setAttribute('aria-describedby', id + '-help ' + id + '-error ' + id + '-state');
+    return control;
+  }
+
+  function updateUnsavedNotice() {
+    unsavedNotice.hidden = dirtyKeys.size === 0;
+  }
+
+  function markDirty(row) {
+    const dirty = row.control.value !== row.baseline;
+    row.dirty = dirty;
+    row.saveButton.disabled = !dirty;
+    row.saveButton.textContent = dirty ? 'Guardar cambio' : 'Sin cambios';
+    row.state.textContent = row.saveFailed ? 'No se pudo guardar' : (dirty ? 'Cambio pendiente' : 'Guardado');
+    if (dirty) dirtyKeys.add(row.item.key);
+    else dirtyKeys.delete(row.item.key);
+    updateUnsavedNotice();
+  }
+
+  function parsedValue(row) {
+    const raw = row.control.value;
+    if (row.item.value_type === 'int') {
+      if (raw.trim() === '' || !Number.isFinite(Number(raw))) throw new Error('Ingresá un número válido.');
+      return Number(raw);
+    }
+    if (row.item.value_type === 'bool') return raw === 'true';
+    if (row.item.value_type === 'json') {
+      try { return JSON.parse(raw); }
+      catch (error) { throw new Error('El valor debe ser JSON válido.'); }
+    }
+    return raw;
+  }
+
+  async function saveRow(row) {
+    if (!row.dirty || row.saving) return;
+    let value;
+    try {
+      value = parsedValue(row);
+      row.control.removeAttribute('aria-invalid');
+      row.error.hidden = true;
+      row.error.textContent = '';
+    } catch (error) {
+      row.control.setAttribute('aria-invalid', 'true');
+      row.error.textContent = error.message;
+      row.error.hidden = false;
+      row.control.focus();
+      return;
+    }
+    row.saving = true;
+    row.saveFailed = false;
+    row.control.disabled = true;
+    row.state.textContent = 'Guardando…';
+    AdminUI.setBusy(row.saveButton, true, 'Guardando…');
+    try {
+      const saved = await AdminUI.request('/api/admin/settings/' + encodeURIComponent(row.item.key), {
+        method: 'PUT',
+        body: { value: value, value_type: row.item.value_type, description: row.item.description }
+      });
+      row.item = saved;
+      row.baseline = row.control.value;
+      row.dirty = false;
+      dirtyKeys.delete(saved.key);
+      row.state.textContent = 'Guardado correctamente';
+      AdminUI.notify('Se guardó “' + ((metadata[saved.key] && metadata[saved.key].label) || saved.key) + '”.', 'success');
+    } catch (error) {
+      row.saveFailed = true;
+      row.state.textContent = 'No se pudo guardar';
+      row.error.textContent = error.message;
+      row.error.hidden = false;
+      row.control.setAttribute('aria-invalid', 'true');
+    } finally {
+      row.saving = false;
+      row.control.disabled = false;
+      AdminUI.setBusy(row.saveButton, false);
+      markDirty(row);
+    }
+  }
+
+  function createSetting(item, index) {
+    const id = 'setting-' + index;
+    const wrapper = document.createElement('div');
+    wrapper.className = 'admin-form-section';
+    const field = document.createElement('div');
+    field.className = 'admin-field';
+    const label = document.createElement('label');
+    label.htmlFor = id;
+    label.textContent = (metadata[item.key] && metadata[item.key].label) || item.key;
+    const key = document.createElement('span');
+    key.className = 'admin-help admin-code';
+    key.textContent = item.key + ' · ' + item.value_type;
+    const control = createControl(item, id);
+    const help = document.createElement('span');
+    help.className = 'admin-help';
+    help.id = id + '-help';
+    help.textContent = item.description || 'Sin descripción adicional.';
+    const error = document.createElement('span');
+    error.className = 'admin-error';
+    error.id = id + '-error';
+    error.hidden = true;
+    const actions = document.createElement('div');
+    actions.className = 'admin-actions';
+    const saveButton = document.createElement('button');
+    saveButton.type = 'button';
+    saveButton.className = 'admin-button admin-button-small';
+    saveButton.textContent = 'Sin cambios';
+    saveButton.disabled = true;
+    const state = document.createElement('span');
+    state.className = 'admin-help';
+    state.id = id + '-state';
+    state.setAttribute('role', 'status');
+    state.setAttribute('aria-live', 'polite');
+    state.textContent = 'Guardado';
+    actions.append(saveButton, state);
+    field.append(label, key, control, help, error, actions);
+    wrapper.appendChild(field);
+    const row = { item: item, control: control, saveButton: saveButton, state: state, error: error, baseline: control.value, dirty: false, saving: false, saveFailed: false };
+    rowsByKey.set(item.key, row);
+    control.addEventListener('input', () => { row.saveFailed = false; markDirty(row); });
+    control.addEventListener('change', () => { row.saveFailed = false; markDirty(row); });
+    saveButton.addEventListener('click', () => saveRow(row));
+    return wrapper;
+  }
+
+  function render(items) {
+    const settings = Array.isArray(items) ? items : [];
+    content.replaceChildren();
+    rowsByKey.clear();
+    dirtyKeys.clear();
+    updateUnsavedNotice();
+    if (!settings.length) {
+      const section = document.createElement('section');
+      section.className = 'admin-card';
+      const empty = document.createElement('div');
+      empty.className = 'admin-empty';
+      const title = document.createElement('strong');
+      title.textContent = 'No hay configuraciones disponibles';
+      const text = document.createElement('span');
+      text.textContent = 'No se encontraron parámetros para editar.';
+      empty.append(title, text);
+      section.appendChild(empty);
+      content.appendChild(section);
+      return;
+    }
+    const grouped = new Map(categories.map((category) => [category.id, []]));
+    settings.forEach((item) => {
+      const category = (metadata[item.key] && metadata[item.key].category) || 'other';
+      grouped.get(category).push(item);
+    });
+    let index = 0;
+    categories.forEach((category) => {
+      const categoryItems = grouped.get(category.id) || [];
+      if (!categoryItems.length) return;
+      const section = document.createElement('section');
+      section.className = 'admin-card';
+      section.setAttribute('aria-labelledby', 'category-' + category.id);
+      const header = document.createElement('div');
+      header.className = 'admin-card-header';
+      const heading = document.createElement('div');
+      const title = document.createElement('h2');
+      title.id = 'category-' + category.id;
+      title.textContent = category.title;
+      const description = document.createElement('p');
+      description.textContent = category.description;
+      heading.append(title, description);
+      header.appendChild(heading);
+      section.appendChild(header);
+      if (category.id === 'cancellation') {
+        const note = document.createElement('div');
+        note.className = 'admin-alert is-warning';
+        note.setAttribute('role', 'note');
+        const noteTitle = document.createElement('strong');
+        noteTitle.textContent = 'Verificación necesaria';
+        const noteText = document.createElement('span');
+        noteText.textContent = 'Esta opción se guarda, pero el sistema público actual no la aplica. Modificarla no habilita ni deshabilita la cancelación pública.';
+        note.append(noteTitle, noteText);
+        section.appendChild(note);
+      }
+      const grid = document.createElement('div');
+      grid.className = 'admin-grid admin-grid-auto';
+      categoryItems.forEach((item) => { grid.appendChild(createSetting(item, index)); index += 1; });
+      section.appendChild(grid);
+      content.appendChild(section);
+    });
+  }
+
+  async function load(force) {
+    if (loading) return;
+    if (dirtyKeys.size && !force) {
+      AdminUI.openDialog(reloadDialog, reloadButton);
+      return;
+    }
+    loading = true;
+    AdminUI.setBusy(reloadButton, true, 'Recargando…');
+    content.innerHTML = '<section class="admin-card"><div class="admin-loading" role="status">Cargando configuración…</div></section>';
+    try {
+      const items = await AdminUI.request('/api/admin/settings');
+      render(items || []);
+    } catch (error) {
+      content.innerHTML = '<section class="admin-card"><div class="admin-error-state"><strong>No se pudo cargar la configuración</strong><span>Intentá recargar nuevamente.</span></div></section>';
+      AdminUI.notify(error.message, 'error');
+    } finally {
+      loading = false;
+      AdminUI.setBusy(reloadButton, false);
+    }
+  }
+
+  reloadButton.addEventListener('click', load);
+  document.getElementById('reload-form').addEventListener('submit', function (event) {
+    event.preventDefault();
+    AdminUI.closeDialog(reloadDialog);
+    load(true);
+  });
+  window.addEventListener('beforeunload', function (event) {
+    if (!dirtyKeys.size) return;
+    event.preventDefault();
+    event.returnValue = '';
+  });
+  load();
+}());
+</script>
+{% endblock %}

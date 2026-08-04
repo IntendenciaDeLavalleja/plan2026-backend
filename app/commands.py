@@ -14,6 +14,7 @@ from app.models.appointment import Appointment
 from app.models.availability import AppointmentSlot, AvailabilityRule, HolidayOrBlockedDay, Location
 from app.models.user import AdminUser, TwoFactorCode, ActivityLog
 from app.models.tribute_type import TributeType
+from app.models.setting import SystemSetting
 from app.services.availability_service import generate_slots_for_rule
 
 
@@ -108,6 +109,18 @@ APPOINTMENT_DEMO_SEED = [
 
 
 # ---------------------------------------------------------------------------
+# Settings override for demo
+# ---------------------------------------------------------------------------
+
+DEMO_SETTINGS = [
+    ("system_name", "Sistema de Agenda – Plan 2026", "string", "Nombre del sistema"),
+    ("office_address", "Palacio Municipal, Minas, Lavalleja", "string", "Direccion de la oficina"),
+    ("office_hours", "Atención únicamente con agenda previa", "string", "Horario de atencion"),
+    ("reservation_code_prefix", "IDL-AF", "string", "Prefijo del codigo de reserva"),
+]
+
+
+# ---------------------------------------------------------------------------
 # Cleanup
 # ---------------------------------------------------------------------------
 
@@ -123,6 +136,7 @@ def _cleanup_all_data() -> None:
     db.session.execute(text("DELETE FROM holidays_or_blocked_days"))
     db.session.execute(text("DELETE FROM tribute_types"))
     db.session.execute(text("DELETE FROM locations"))
+    db.session.execute(text("DELETE FROM system_settings"))
     db.session.execute(text("DELETE FROM admin_users"))
     db.session.commit()
     click.echo("Limpieza completa.")
@@ -240,12 +254,19 @@ def _create_demo_appointments(tributes_by_name: dict[str, TributeType]) -> int:
     return created
 
 
+def _apply_demo_settings() -> None:
+    for key, value, vtype, desc in DEMO_SETTINGS:
+        SystemSetting.set(key, value, vtype, desc)
+    db.session.commit()
+
+
 # ---------------------------------------------------------------------------
 # CLI registration
 # ---------------------------------------------------------------------------
 
 def register_cli(app):
     app.cli.add_command(create_admin)
+    app.cli.add_command(create_bootstrap_admin)
     app.cli.add_command(init_db)
     app.cli.add_command(seed_data)
     app.cli.add_command(reset_admin_password)
@@ -271,6 +292,27 @@ def create_admin(username: str, email: str, password: str, is_superuser: str):
     db.session.commit()
     role = "Super Admin" if is_super else "Admin"
     click.echo(f"{role} '{username}' creado correctamente (id={user.id}).")
+
+
+@click.command("create-bootstrap-admin")
+@with_appcontext
+def create_bootstrap_admin():
+    """Crea el admin inicial desde las variables de entorno BOOTSTRAP_ADMIN_*."""
+    from flask import current_app
+    username = current_app.config["BOOTSTRAP_ADMIN_USERNAME"]
+    email = current_app.config["BOOTSTRAP_ADMIN_EMAIL"]
+    password = current_app.config["BOOTSTRAP_ADMIN_PASSWORD"]
+
+    existing = AdminUser.query.filter((AdminUser.username == username) | (AdminUser.email == email)).first()
+    if existing:
+        click.echo(f"Admin '{username}' ya existe. Use 'flask reset-admin-password' para resetear.")
+        return
+
+    user = AdminUser(username=username, email=email, is_superuser=True, is_active=True)
+    user.set_password(password)
+    db.session.add(user)
+    db.session.commit()
+    click.echo(f"Admin '{username}' creado. Email: {email}")
 
 
 @click.command("reset-admin-password")
@@ -321,7 +363,12 @@ def seed_data(force: bool):
     if force:
         _cleanup_all_data()
 
-    # 1. Tributes
+    # 1. Ensure defaults + demo settings
+    from app.blueprints.admin.settings import ensure_defaults
+    ensure_defaults()
+    _apply_demo_settings()
+
+    # 2. Tributes
     click.echo("Creando tributos...")
     tributes_by_name: dict[str, TributeType] = {}
     for item in TRIBUTE_SEED:

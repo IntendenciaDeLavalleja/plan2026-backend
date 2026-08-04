@@ -218,7 +218,7 @@
         ui.setBusy(reload, true, 'Actualizando...');
         try {
           const params = selectedParams(page);
-          const data = await ui.request('admin/appointments?' + params.toString());
+          const data = await ui.request('/api/admin/appointments?' + params.toString());
           appointments = data.items || [];
           pagination = { page: data.page || 1, per_page: data.per_page || pagination.per_page, total: data.total || 0, pages: data.pages || 0 };
           if (updateUrl !== false) syncUrl(params);
@@ -242,8 +242,8 @@
       async function loadLookups() {
         try {
           const values = await Promise.all([
-            ui.request('admin/appointments/status-options'),
-            ui.request('admin/tribute-types?per_page=200')
+            ui.request('/api/admin/appointments/status-options'),
+            ui.request('/api/admin/tribute-types?per_page=200')
           ]);
           statusOptions = values[0] || [];
           tributeTypes = (values[1] && values[1].items) || [];
@@ -282,7 +282,7 @@
         document.getElementById('detail-notes').value = item.internal_notes || '';
         ui.openDialog(detailDialog, trigger);
         try {
-          const fresh = await ui.request('admin/appointments/' + item.id);
+          const fresh = await ui.request('/api/admin/appointments/' + item.id);
           if (activeAppointment && activeAppointment.id === fresh.id) {
             activeAppointment = fresh;
             document.getElementById('detail-status').value = fresh.status || 'reserved';
@@ -305,7 +305,7 @@
         dateSelect.innerHTML = '<option value="">Cargando fechas...</option>';
         slotSelect.innerHTML = '<option value="">Elegí una fecha</option>';
         try {
-          const data = await ui.request('public/availability?tribute_type_id=' + encodeURIComponent(item.tribute_type_id) + '&days=45');
+          const data = await ui.request('/api/public/availability?tribute_type_id=' + encodeURIComponent(item.tribute_type_id) + '&days=45');
           if (requestId !== rescheduleRequest) return;
           const dates = (data && data.dates) || [];
           dateSelect.innerHTML = dates.length ? '<option value="">Seleccioná una fecha</option>' + dates.map(function (entry) { return '<option value="' + ui.escapeHtml(entry.date) + '">' + ui.escapeHtml(ui.formatDateLong(entry.date)) + '</option>'; }).join('') : '<option value="">No hay fechas disponibles</option>';
@@ -327,7 +327,7 @@
         slotSelect.innerHTML = '<option value="">Cargando horarios...</option>';
         if (!activeAppointment || !dateSelect.value) return;
         try {
-          const data = await ui.request('public/slots?tribute_type_id=' + encodeURIComponent(activeAppointment.tribute_type_id) + '&date=' + encodeURIComponent(dateSelect.value));
+          const data = await ui.request('/api/public/slots?tribute_type_id=' + encodeURIComponent(activeAppointment.tribute_type_id) + '&date=' + encodeURIComponent(dateSelect.value));
           if (requestId !== rescheduleRequest) return;
           const slots = ((data && data.slots) || []).filter(function (slot) { return String(slot.id) !== String(activeAppointment.slot_id); });
           slotSelect.innerHTML = slots.length ? '<option value="">Seleccioná un horario</option>' + slots.map(function (slot) { return '<option value="' + slot.id + '">' + ui.escapeHtml((slot.start_time || '').slice(0, 5) + ' a ' + (slot.end_time || '').slice(0, 5)) + ' · ' + slot.remaining + ' disponibles</option>'; }).join('') : '<option value="">No hay horarios disponibles</option>';
@@ -366,7 +366,7 @@
         ui.clearNotice('detail-error');
         ui.setBusy(button, true, 'Guardando...');
         try {
-          await ui.request('admin/appointments/' + activeAppointment.id, { method: 'PATCH', body: { status: document.getElementById('detail-status').value, internal_notes: document.getElementById('detail-notes').value } });
+          await ui.request('/api/admin/appointments/' + activeAppointment.id, { method: 'PATCH', body: { status: document.getElementById('detail-status').value, internal_notes: document.getElementById('detail-notes').value } });
           ui.closeDialog(detailDialog);
           ui.notify('Turno actualizado correctamente.', 'success');
           await loadAppointments(pagination.page);
@@ -381,7 +381,7 @@
         ui.clearNotice('cancel-error');
         ui.setBusy(button, true, 'Cancelando...');
         try {
-          await ui.request('admin/appointments/' + activeAppointment.id + '/cancel', { method: 'POST' });
+          await ui.request('/api/admin/appointments/' + activeAppointment.id + '/cancel', { method: 'POST' });
           ui.closeDialog(cancelDialog);
           ui.notify('Turno cancelado y cupo liberado.', 'success');
           await loadAppointments(pagination.page);
@@ -397,7 +397,7 @@
         ui.clearNotice('reschedule-error');
         ui.setBusy(button, true, 'Reprogramando...');
         try {
-          await ui.request('admin/appointments/' + activeAppointment.id + '/reschedule', { method: 'POST', body: { slot_id: slotId } });
+          await ui.request('/api/admin/appointments/' + activeAppointment.id + '/reschedule', { method: 'POST', body: { slot_id: slotId } });
           ui.closeDialog(rescheduleDialog);
           ui.notify('Turno reprogramado correctamente.', 'success');
           await loadAppointments(pagination.page);

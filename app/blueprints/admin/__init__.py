@@ -12,4 +12,5 @@ from .dashboard import admin_dashboard_bp  # noqa: F401
 from .tribute_types import admin_tribute_types_bp  # noqa: F401
 from .availability import admin_availability_bp  # noqa: F401
 from .appointments import admin_appointments_bp  # noqa: F401
+from .settings import admin_settings_bp  # noqa: F401
 from .locations import admin_locations_bp  # noqa: F401

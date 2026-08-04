@@ -61,6 +61,7 @@
       <a class="admin-button admin-button-secondary" href="/admin/disponibilidad">Administrar disponibilidad</a>
       <a class="admin-button admin-button-secondary" href="/admin/tributos">Configurar tributos</a>
       <a class="admin-button admin-button-secondary" href="/admin/sedes">Administrar sedes</a>
+      <a class="admin-button admin-button-secondary" href="/admin/configuracion">Configuración institucional</a>
     </div>
   </section>
 {% endblock %}
@@ -172,7 +173,7 @@
         showState(appointmentsState, 'loading', '', 'Cargando próximos turnos...');
         AdminUI.setBusy(reloadButton, true, 'Actualizando...');
         try {
-          const data = await AdminUI.request('admin/dashboard');
+          const data = await AdminUI.request('/api/admin/dashboard');
           const dashboard = data && typeof data === 'object' ? data : {};
           renderMetrics(dashboard.metrics);
           renderAppointments(dashboard.upcoming_appointments);

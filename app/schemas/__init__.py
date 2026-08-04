@@ -13,6 +13,8 @@ from .appointment_schema import (
     AppointmentCreateSchema,
     AppointmentAdminSchema,
     AppointmentPublicSchema,
+    SystemSettingSchema,
+    SystemSettingUpdateSchema,
 )
 
 __all__ = [
@@ -27,4 +29,6 @@ __all__ = [
     "AppointmentCreateSchema",
     "AppointmentAdminSchema",
     "AppointmentPublicSchema",
+    "SystemSettingSchema",
+    "SystemSettingUpdateSchema",
 ]

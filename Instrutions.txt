@@ -16,12 +16,6 @@ Para ejecutar migraciones:
 Para crear un admin:
     > python -m flask create-admin nombre-de-admin mail-de-admin contraseña-de-admin true/false-super-admin
 
-Los superadmin pueden crear otros usuarios desde:
-    > http://127.0.0.1:5000/admin/usuarios
-
-Los logs de actividad del sistema solo están disponibles para superadmin en:
-    > http://127.0.0.1:5000/admin/logs
-
 Para iniciar la app:
     > python wsgi.py
     > Panel administrativo del backend: http://127.0.0.1:5000/admin/login

@@ -23,11 +23,6 @@ def _validate_phone(value: str) -> None:
         raise ValidationError("Teléfono inválido.")
 
 
-def _validate_not_blank(value: str) -> None:
-    if not value or not value.strip():
-        raise ValidationError("Este campo no puede estar vacío.")
-
-
 class _BaseSchema(Schema):
     class Meta:
         unknown = EXCLUDE
@@ -36,10 +31,10 @@ class _BaseSchema(Schema):
 class AppointmentCreateSchema(_BaseSchema):
     tribute_type_id = fields.Int(required=True)
     slot_id = fields.Int(required=True)
-    citizen_name = fields.Str(required=True, validate=[validate.Length(min=3, max=160), _validate_not_blank])
-    citizen_document = fields.Str(required=True, validate=validate.Length(min=6, max=12))
-    phone = fields.Str(required=True, validate=validate.Length(min=6, max=30))
-    email = fields.Email(allow_none=True, load_default=None, validate=validate.Length(max=120))
+    citizen_name = fields.Str(required=True, validate=validate.Length(min=3, max=160))
+    citizen_document = fields.Str(required=True, validate=validate.Length(min=6, max=20))
+    phone = fields.Str(required=True, validate=validate.Length(min=6, max=40))
+    email = fields.Email(allow_none=True, load_default=None)
     reference_value = fields.Str(allow_none=True, load_default=None, validate=validate.Length(max=80))
     comments = fields.Str(allow_none=True, load_default=None, validate=validate.Length(max=1000))
     accept_terms = fields.Bool(required=True)
@@ -88,21 +83,18 @@ class AppointmentPublicSchema(_BaseSchema):
 
 
 class AppointmentAdminSchema(AppointmentPublicSchema):
-    date = fields.Method("get_slot_date", dump_only=True, allow_none=True)
-    start_time = fields.Method("get_slot_start_time", dump_only=True, allow_none=True)
-    end_time = fields.Method("get_slot_end_time", dump_only=True, allow_none=True)
+    pass
 
-    @staticmethod
-    def get_slot_date(appointment):
-        slot = appointment.slot
-        return slot.date.isoformat() if slot and slot.date else None
 
-    @staticmethod
-    def get_slot_start_time(appointment):
-        slot = appointment.slot
-        return slot.start_time.strftime("%H:%M") if slot and slot.start_time else None
+class SystemSettingSchema(_BaseSchema):
+    key = fields.Str(dump_only=True)
+    value = fields.Raw(dump_only=True)
+    value_type = fields.Str(dump_only=True)
+    description = fields.Str(allow_none=True, dump_default="")
+    updated_at = fields.DateTime(dump_only=True)
 
-    @staticmethod
-    def get_slot_end_time(appointment):
-        slot = appointment.slot
-        return slot.end_time.strftime("%H:%M") if slot and slot.end_time else None
+
+class SystemSettingUpdateSchema(_BaseSchema):
+    value = fields.Raw(required=True)
+    value_type = fields.Str(load_default="string", validate=validate.OneOf(["string", "int", "bool", "json"]))
+    description = fields.Str(allow_none=True, load_default=None)

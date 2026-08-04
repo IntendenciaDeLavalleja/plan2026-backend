@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import re
+from typing import Any
+
 from flask import current_app, request
 from flask_login import current_user
 
@@ -49,3 +51,7 @@ def apply_rate_limit(rule: str):
     return limiter.limit(rule)
 
 
+def app_setting(key: str, default: Any = None) -> Any:
+    """Fetch a SystemSetting value (imported lazily to avoid circular deps)."""
+    from app.models.setting import SystemSetting
+    return SystemSetting.get(key, default)

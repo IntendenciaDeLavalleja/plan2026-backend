@@ -2,17 +2,17 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from app.extensions import db
 from app.models.appointment import Appointment
 from app.models.availability import AppointmentSlot, HolidayOrBlockedDay
 from app.models.tribute_type import TributeType
-from flask import current_app
+from app.models.setting import SystemSetting
 from app.services.reservation_code_service import generate_reservation_code
 from app.services.availability_service import is_date_blocked
 
@@ -28,31 +28,31 @@ class BookingError(Exception):
 
 
 def _max_per_document() -> int:
-    return current_app.config["MAX_RESERVATIONS_PER_DOCUMENT"]
+    try:
+        return int(SystemSetting.get("max_reservations_per_document", 1))
+    except (TypeError, ValueError):
+        return 1
 
 
 def _anticipation_min_hours() -> int:
-    return current_app.config["MIN_ANTICIPATION_HOURS"]
+    try:
+        return int(SystemSetting.get("min_anticipation_hours", 1))
+    except (TypeError, ValueError):
+        return 1
 
 
 def _anticipation_max_days() -> int:
-    return current_app.config["MAX_ANTICIPATION_DAYS"]
+    try:
+        return int(SystemSetting.get("max_anticipation_days", 90))
+    except (TypeError, ValueError):
+        return 90
 
 
 def _count_active_for_document(document: str) -> int:
-    normalized = normalize_document(document)
     return Appointment.query.filter(
-        func.replace(
-            func.replace(func.replace(Appointment.citizen_document, ".", ""), "-", ""),
-            " ",
-            "",
-        ) == normalized,
+        Appointment.citizen_document == document,
         Appointment.status.in_(("reserved", "confirmed")),
     ).count()
-
-
-def normalize_document(document: str) -> str:
-    return (document or "").strip().replace(".", "").replace(" ", "").replace("-", "").upper()
 
 
 def book_appointment(payload: dict) -> Appointment:
@@ -158,7 +158,7 @@ def cancel_appointment(appointment: Appointment, *, by_admin: bool = False) -> N
     if appointment.status == "cancelled":
         return
     appointment.status = "cancelled"
-    appointment.cancelled_at = datetime.now(timezone.utc).replace(tzinfo=None)
+    appointment.cancelled_at = datetime.utcnow()
     slot = appointment.slot
     if slot is not None:
         slot.reserved_count = max(0, (slot.reserved_count or 0) - 1)

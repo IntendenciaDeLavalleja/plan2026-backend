@@ -1,10 +1,6 @@
-from datetime import datetime, date, time, timezone
+from datetime import datetime, date, time
 
 from app.extensions import db
-
-
-def utcnow() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 # --- Association table: which tribute types an availability rule applies to ---
@@ -25,7 +21,7 @@ class Location(db.Model):
     address = db.Column(db.String(255), nullable=True)
     phone = db.Column(db.String(60), nullable=True)
     is_active = db.Column(db.Boolean, default=True, nullable=False)
-    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
     slots = db.relationship("AppointmentSlot", backref="location", lazy="dynamic")
     appointments = db.relationship("Appointment", backref="location", lazy="dynamic")
@@ -62,8 +58,8 @@ class AvailabilityRule(db.Model):
     team = db.Column(db.String(120), nullable=True)
     applies_to_all = db.Column(db.Boolean, default=False, nullable=False)
     is_active = db.Column(db.Boolean, default=True, nullable=False)
-    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
-    updated_at = db.Column(db.DateTime, default=utcnow, onupdate=utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     tribute_types = db.relationship(
         "TributeType",
@@ -117,8 +113,8 @@ class AppointmentSlot(db.Model):
     block_reason = db.Column(db.String(255), nullable=True)
     notes = db.Column(db.String(255), nullable=True)
 
-    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
-    updated_at = db.Column(db.DateTime, default=utcnow, onupdate=utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     appointments = db.relationship("Appointment", backref="slot", lazy="dynamic")
 

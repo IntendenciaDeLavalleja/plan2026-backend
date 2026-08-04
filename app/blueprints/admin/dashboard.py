@@ -2,24 +2,23 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timedelta
 
 from flask import Blueprint
-from flask_login import login_required
+from app.utils.jwt_auth import jwt_admin_required
 from sqlalchemy import func
 
 from app.extensions import db
 from app.models.appointment import Appointment
 from app.models.availability import AppointmentSlot, HolidayOrBlockedDay
 from app.models.tribute_type import TributeType
-from app.services import ticket_service
 from app.utils.responses import ok, paginated
 
 admin_dashboard_bp = Blueprint("admin_dashboard", __name__)
 
 
 @admin_dashboard_bp.get("/dashboard")
-@login_required
+@jwt_admin_required
 def dashboard():
     today = date.today()
     end_of_week = today + timedelta(days=7)
@@ -101,16 +100,9 @@ def dashboard():
 
 
 @admin_dashboard_bp.get("/health")
-@login_required
+@jwt_admin_required
 def health():
     return ok({
         "status": "ok",
-        "now": datetime.now(timezone.utc).isoformat(),
+        "now": datetime.utcnow().isoformat(),
     })
-
-
-@admin_dashboard_bp.get("/dashboard/today")
-@login_required
-def dashboard_today():
-    """Operational summary of the current day for the dashboard app."""
-    return ok(ticket_service.day_summary())

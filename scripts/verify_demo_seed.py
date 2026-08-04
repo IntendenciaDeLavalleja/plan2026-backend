@@ -18,6 +18,7 @@ from app.extensions import db
 from app.models.appointment import Appointment
 from app.models.availability import AppointmentSlot, AvailabilityRule, HolidayOrBlockedDay, Location
 from app.models.tribute_type import TributeType
+from app.models.setting import SystemSetting
 from app.models.user import AdminUser
 
 
@@ -220,6 +221,16 @@ def main() -> int:
                 failures += 1
             if not check("Slot Suburbana 27/07 10:00 capacity=2", slot_suburbana.capacity == 2, f"obtenido: {slot_suburbana.capacity}"):
                 failures += 1
+
+        # --- Settings ---
+        print("\nConfiguración:")
+        sys_name = SystemSetting.get("system_name")
+        if not check("system_name contiene Plan 2026", "Plan 2026" in str(sys_name), f"obtenido: {sys_name}"):
+            failures += 1
+
+        prefix = SystemSetting.get("reservation_code_prefix")
+        if not check("reservation_code_prefix = IDL-AF", prefix == "IDL-AF", f"obtenido: {prefix}"):
+            failures += 1
 
         # --- Admin ---
         print("\nAdministrador:")

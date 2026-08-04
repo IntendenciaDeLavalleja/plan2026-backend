@@ -3,18 +3,27 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>404 · Página No Encontrada</title>
+    <title>404 · Amnistía Financiera</title>
     <style>
       body { margin: 0; min-height: 100vh; display: grid; place-items: center; font-family: 'Segoe UI', system-ui, sans-serif; background: linear-gradient(180deg, #081122, #0f1b3a); color: #e5eefc; }
-      .card { width: min(720px, calc(100% - 32px)); padding: 32px; border-radius: 24px; background: rgba(15, 23, 42, 0.72); border: 1px solid rgba(148,163,184,0.18); box-shadow: 0 24px 80px rgba(2,6,23,0.42); text-align: center; }
+      .card { width: min(720px, calc(100% - 32px)); padding: 32px; border-radius: 24px; background: rgba(15, 23, 42, 0.72); border: 1px solid rgba(148,163,184,0.18); box-shadow: 0 24px 80px rgba(2,6,23,0.42); }
       h1 { margin: 0 0 12px; font-size: clamp(2rem, 5vw, 3rem); }
-      p { margin: 0; color: #9fb0d0; line-height: 1.55; }
+      p { margin: 0 0 16px; color: #9fb0d0; line-height: 1.55; }
+      .actions { display:flex; gap:12px; flex-wrap:wrap; }
+      a { text-decoration:none; color:#fff; background: linear-gradient(135deg, #5a67ff, #7c3aed); padding: 12px 16px; border-radius: 12px; font-weight: 700; }
+      a.secondary { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.08); }
+      code { color: #cbd5e1; }
     </style>
   </head>
   <body>
     <div class="card">
       <h1>404</h1>
-      <p>Página No Encontrada</p>
+      <p>No encontramos la ruta <code>{{ path }}</code> en el backend.</p>
+      <p>Si buscabas el panel administrativo, ingresá desde el acceso correcto del backend.</p>
+      <div class="actions">
+        <a href="/admin/login">Ir al panel administrativo</a>
+        <a class="secondary" href="/">Ir al inicio</a>
+      </div>
     </div>
   </body>
 </html>

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import secrets
 import string
-from datetime import datetime, timezone
+from datetime import datetime
 
 from flask import current_app
 
@@ -18,7 +18,7 @@ def _alphabet_no_ambiguous() -> str:
 
 def generate_reservation_code() -> str:
     prefix = current_app.config.get("RESERVATION_CODE_PREFIX", "IDL-AF")
-    year = datetime.now(timezone.utc).year
+    year = datetime.utcnow().year
     alphabet = _alphabet_no_ambiguous()
     suffix = "".join(secrets.choice(alphabet) for _ in range(6))
     return f"{prefix}-{year}-{suffix}"

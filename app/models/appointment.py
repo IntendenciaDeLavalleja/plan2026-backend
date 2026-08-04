@@ -1,18 +1,11 @@
-from datetime import datetime, timezone
+from datetime import datetime
 
 from app.extensions import db
-
-
-def utcnow() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 APPOINTMENT_STATUSES = (
     "reserved",
     "confirmed",
-    "called",
-    "in_service",
     "attended",
-    "resolved",
     "cancelled",
     "no_show",
 )
@@ -42,8 +35,8 @@ class Appointment(db.Model):
     status = db.Column(db.String(20), default="reserved", nullable=False, index=True)
     internal_notes = db.Column(db.Text, nullable=True)
 
-    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
-    updated_at = db.Column(db.DateTime, default=utcnow, onupdate=utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     cancelled_at = db.Column(db.DateTime, nullable=True)
 
     def to_public_dict(self) -> dict:

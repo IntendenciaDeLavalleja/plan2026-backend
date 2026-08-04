@@ -4,7 +4,6 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="light" />
-    <meta name="csrf-token" content="{{ csrf_token() }}" />
     <title>{% block title %}Panel administrativo{% endblock %} · Intendencia de Lavalleja</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='admin/admin.css') }}" />
     {% block head %}{% endblock %}
@@ -32,7 +31,7 @@
         <div class="admin-sidebar-footer">
           <span class="admin-user-name">{{ user.full_name or user.username }}</span>
           <span class="admin-user-email">{{ user.email }}</span>
-          <button class="admin-button admin-button-quiet admin-button-block" type="button" data-admin-logout>Cerrar sesión</button>
+          <a class="admin-button admin-button-quiet admin-button-block" href="/admin/logout">Cerrar sesión</a>
         </div>
       </aside>
       <button class="admin-sidebar-backdrop" type="button" data-nav-close aria-label="Cerrar navegación" tabindex="-1"></button>

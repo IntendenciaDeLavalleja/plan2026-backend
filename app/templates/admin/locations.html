@@ -188,7 +188,7 @@
     AdminUI.setBusy(reloadButton, true, 'Actualizando…');
     rows.innerHTML = '<tr><td colspan="4"><div class="admin-loading" role="status">Cargando sedes…</div></td></tr>';
     try {
-      items = await AdminUI.request('admin/locations');
+      items = await AdminUI.request('/api/admin/locations');
       render();
     } catch (error) {
       rows.innerHTML = '<tr><td colspan="4"><div class="admin-error-state"><strong>No se pudo cargar el listado</strong><span>Intentá actualizar nuevamente.</span></div></td></tr>';
@@ -214,7 +214,7 @@
       is_active: byId('is_active').checked
     };
     try {
-      await AdminUI.request(id ? 'admin/locations/' + id : 'admin/locations', {
+      await AdminUI.request(id ? '/api/admin/locations/' + id : '/api/admin/locations', {
         method: id ? 'PATCH' : 'POST', body: payload
       });
       AdminUI.notify(id ? 'Sede actualizada correctamente.' : 'Sede creada correctamente.', 'success');
@@ -234,7 +234,7 @@
     if (!deleteTarget || confirmDelete.disabled) return;
     AdminUI.setBusy(confirmDelete, true, 'Eliminando…');
     try {
-      await AdminUI.request('admin/locations/' + deleteTarget.id, { method: 'DELETE' });
+      await AdminUI.request('/api/admin/locations/' + deleteTarget.id, { method: 'DELETE' });
       AdminUI.closeDialog(dialog);
       AdminUI.notify('Sede eliminada correctamente.', 'success');
       if (String(byId('id').value) === String(deleteTarget.id)) resetForm();

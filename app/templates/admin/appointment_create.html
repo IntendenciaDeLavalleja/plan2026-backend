@@ -146,7 +146,7 @@
       async function loadTributes() {
         tributeSelect.disabled = true;
         try {
-          tributeTypes = await ui.request('public/tribute-types') || [];
+          tributeTypes = await ui.request('/api/public/tribute-types') || [];
           tributeSelect.innerHTML = '<option value="">Seleccioná un tributo</option>' + tributeTypes.map(function (item) { return '<option value="' + item.id + '">' + ui.escapeHtml(item.name) + '</option>'; }).join('');
           tributeSelect.disabled = !tributeTypes.length;
           if (!tributeTypes.length) showNotice('No hay tributos disponibles para registrar turnos.', 'warning');
@@ -168,7 +168,7 @@
           return;
         }
         try {
-          const data = await ui.request('public/availability?tribute_type_id=' + encodeURIComponent(tributeSelect.value) + '&days=45');
+          const data = await ui.request('/api/public/availability?tribute_type_id=' + encodeURIComponent(tributeSelect.value) + '&days=45');
           if (requestId !== datesRequest) return;
           const dates = data.dates || [];
           dateSelect.innerHTML = dates.length ? '<option value="">Seleccioná una fecha</option>' + dates.map(function (item) { return '<option value="' + ui.escapeHtml(item.date) + '">' + ui.escapeHtml(ui.formatDateLong(item.date)) + ' (' + item.remaining + ' disponibles)</option>'; }).join('') : '<option value="">Sin fechas disponibles</option>';
@@ -188,7 +188,7 @@
         slotState.textContent = 'Cargando horarios...';
         document.getElementById('slot-context').textContent = (selectedTribute() ? selectedTribute().name : 'Tributo') + ' · ' + ui.formatDateLong(dateSelect.value);
         try {
-          const data = await ui.request('public/slots?tribute_type_id=' + encodeURIComponent(tributeSelect.value) + '&date=' + encodeURIComponent(dateSelect.value));
+          const data = await ui.request('/api/public/slots?tribute_type_id=' + encodeURIComponent(tributeSelect.value) + '&date=' + encodeURIComponent(dateSelect.value));
           if (requestId !== slotsRequest) return;
           availableSlots = data.slots || [];
           if (!availableSlots.length) {
@@ -301,7 +301,7 @@
         ui.setBusy(button, true, 'Registrando...');
         ui.clearNotice('wizard-notice');
         try {
-          const data = await ui.request('public/appointments', { method: 'POST', body: payload });
+          const data = await ui.request('/api/public/appointments', { method: 'POST', body: payload });
           document.getElementById('receipt-code').textContent = data.reservation_code;
           renderReview(document.getElementById('receipt-summary'));
           document.getElementById('wizard-card').hidden = true;

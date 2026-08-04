@@ -131,7 +131,7 @@
           captchaQuestion.textContent = 'Cargando verificación...';
           captchaQuestion.setAttribute('aria-busy', 'true');
           try {
-            const data = await AdminUI.request('admin/auth/captcha');
+            const data = await AdminUI.request('/admin/captcha');
             captchaQuestion.textContent = data && data.question ? data.question : 'Completá la verificación de seguridad.';
             captchaInput.value = '';
             if (settings.focus) captchaInput.focus();
@@ -158,7 +158,7 @@
             captcha: captchaInput.value
           };
           try {
-            const data = await AdminUI.request('admin/auth/login', { method: 'POST', body: payload, timeout: 30000 });
+            const data = await AdminUI.request('/admin/login', { method: 'POST', body: payload });
             document.getElementById('preview-email').textContent = 'Código enviado a ' + ((data && data.preview) || 'tu correo registrado') + '.';
             const testCode = data && data.test_code;
             testCodeNotice.hidden = !testCode;
@@ -181,7 +181,7 @@
           AdminUI.clearNotice(notice);
           AdminUI.setBusy(twofaSubmit, true, 'Verificando...');
           try {
-            await AdminUI.request('admin/auth/verify-2fa', { method: 'POST', body: { code: codeInput.value } });
+            await AdminUI.request('/admin/verify-2fa', { method: 'POST', body: { code: codeInput.value } });
             window.location.href = '/admin';
           } catch (error) {
             AdminUI.notify(error.message || 'Código inválido.', 'error', notice);

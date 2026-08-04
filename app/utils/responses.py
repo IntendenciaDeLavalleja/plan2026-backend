@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from flask import current_app, jsonify, render_template, request
+from flask import jsonify, render_template, request
 from marshmallow import ValidationError
 from werkzeug.exceptions import HTTPException
 
@@ -36,15 +36,11 @@ def register_error_handlers(app):
 
     @app.errorhandler(HTTPException)
     def _on_http(err: HTTPException):
-        if err.code == 404 and not request.path.startswith("/api/v1/"):
+        if err.code == 404 and not request.path.startswith("/api/"):
             return render_template("errors/404.html", path=request.path), 404
         return fail(err.description or err.name, err.code or 500, code=(err.name or "http_error").lower().replace(" ", "_"))
 
-    @app.errorhandler(ValueError)
-    def _on_value_error(_err: ValueError):
-        return fail("Parámetros inválidos", 400, code="bad_request")
-
     @app.errorhandler(Exception)
     def _on_unexpected(err: Exception):  # pragma: no cover - safety net
-        current_app.logger.exception("Unhandled request error")
+        app.logger.exception("Unexpected error: %s", err)
         return fail("Error interno del servidor", 500, code="internal_error")
