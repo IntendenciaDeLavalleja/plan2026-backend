@@ -65,3 +65,8 @@ class Config:
     WTF_CSRF_SECRET_KEY = os.environ.get("WTF_CSRF_SECRET_KEY", "csrf-change-me")
     WTF_CSRF_ENABLED = os.environ.get("WTF_CSRF_ENABLED", "True").lower() == "true"
     WTF_CSRF_HEADERS = ["X-CSRFToken", "X-CSRF-Token"]
+    # The dashboard is a cross-origin admin client. Flask-WTF's strict referrer
+    # check rejects requests whose Referer differs from request.host, which breaks
+    # cross-origin POSTs even when a valid CSRF token is present. The token itself
+    # remains the primary protection; the referrer check only works same-origin.
+    WTF_CSRF_SSL_STRICT = False
