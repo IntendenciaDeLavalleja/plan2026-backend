@@ -467,6 +467,8 @@ def create_holiday():
         data = HolidaySchema().load(request.get_json(silent=True) or {})
     except ValidationError as err:
         return fail("Datos inválidos", 422, code="validation_error", errors=err.messages)
+    if HolidayOrBlockedDay.query.filter_by(date=data["date"]).first():
+        return fail("Ya existe un día no laborable para esa fecha", 409, code="holiday_exists")
     h = HolidayOrBlockedDay(**data)
     db.session.add(h)
     db.session.commit()

@@ -1006,12 +1006,13 @@
 
   byId('holiday-form').addEventListener('submit', async (event) => {
     event.preventDefault();
-    if (!event.currentTarget.reportValidity()) return;
+    const form = event.currentTarget;
+    if (!form.reportValidity()) return;
     const button = byId('holiday-submit');
     ui.setBusy(button, true, 'Agregando…');
     try {
       await ui.request('admin/availability/holidays', { method: 'POST', body: { date: value('holiday-date'), reason: value('holiday-reason') || null, is_full_day: true } });
-      event.currentTarget.reset();
+      form.reset();
       ui.notify('Día no laborable agregado.', 'success', 'holiday-notice');
       await Promise.all([loadHolidays(), loadSlots()]);
     } catch (error) {
