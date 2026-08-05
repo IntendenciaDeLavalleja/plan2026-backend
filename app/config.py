@@ -28,6 +28,10 @@ class Config:
     MAIL_PORT = int(os.environ.get("MAIL_PORT", 25))
     MAIL_USE_TLS = os.environ.get("MAIL_USE_TLS", "False").lower() == "true"
     MAIL_USE_SSL = os.environ.get("MAIL_USE_SSL", "False").lower() == "true"
+    # When true, Flask-Mail discards outgoing messages instead of connecting to MAIL_SERVER.
+    MAIL_SUPPRESS_SEND = os.environ.get("MAIL_SUPPRESS_SEND", "False").lower() == "true"
+    # Fixed 2FA code for local/dev testing without a real mailbox. Never set this in production.
+    DEV_TWO_FACTOR_CODE = (os.environ.get("DEV_TWO_FACTOR_CODE") or "").strip() or None
     MAIL_USERNAME = os.environ.get("MAIL_USERNAME")
     MAIL_PASSWORD = os.environ.get("MAIL_PASSWORD")
     MAIL_DEFAULT_SENDER = os.environ.get("MAIL_DEFAULT_SENDER", "no-reply@lavalleja.gub.uy")

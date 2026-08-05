@@ -22,11 +22,14 @@ def _preview_email(email: str) -> str:
 
 def _new_challenge(user: AdminUser) -> TwoFactorCode:
     TwoFactorCode.query.filter_by(user_id=user.id, purpose="login", consumed_at=None).update({TwoFactorCode.consumed_at: db.func.now()}, synchronize_session=False)
-    code = current_app.config.get("DEV_TWO_FACTOR_CODE") or "".join(secrets.choice("0123456789") for _ in range(6))
+    dev_code = current_app.config.get("DEV_TWO_FACTOR_CODE")
+    code = dev_code or "".join(secrets.choice("0123456789") for _ in range(6))
     challenge = TwoFactorCode(user_id=user.id, code=code, purpose="login", ttl_minutes=10)
     db.session.add(challenge)
     db.session.commit()
-    if not send_2fa_email(user.email, code):
+    delivered = send_2fa_email(user.email, code)
+    # In dev/test, a fixed DEV_TWO_FACTOR_CODE lets us log in even if no SMTP relay is reachable.
+    if not delivered and not dev_code:
         challenge.consumed_at = db.func.now()
         db.session.commit()
         raise RuntimeError("two_factor_delivery_failed")
@@ -52,7 +55,11 @@ def login():
         return fail("No se pudo enviar el código de verificación", 503, code="two_factor_delivery_failed")
     pending = create_access_token(identity=str(user.id), additional_claims={"type": "2fa_pending", "challenge_id": challenge.id}, expires_delta=timedelta(minutes=10))
     log_activity("DASHBOARD_LOGIN_STEP1", "Segundo factor solicitado", user=user)
-    return ok({"requires_2fa": True, "pending_token": pending, "email_preview": _preview_email(user.email), "expires_in": 600})
+    response = {"requires_2fa": True, "pending_token": pending, "email_preview": _preview_email(user.email), "expires_in": 600}
+    dev_code = current_app.config.get("DEV_TWO_FACTOR_CODE")
+    if dev_code:
+        response["test_code"] = dev_code
+    return ok(response)
 
 
 @dashboard_auth_bp.post("/auth/verify-2fa")

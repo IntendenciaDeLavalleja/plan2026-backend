@@ -95,7 +95,8 @@ def login_step1():
         {TwoFactorCode.consumed_at: db.func.now()},
         synchronize_session=False,
     )
-    code = "".join(secrets.choice("0123456789") for _ in range(6))
+    dev_code = current_app.config.get("DEV_TWO_FACTOR_CODE")
+    code = dev_code or "".join(secrets.choice("0123456789") for _ in range(6))
     tf = TwoFactorCode(user_id=user.id, code=code, purpose="login", ttl_minutes=10)
     db.session.add(tf)
     db.session.commit()
@@ -104,7 +105,8 @@ def login_step1():
     delivery_started_at = perf_counter()
     delivered = send_2fa_email(user.email, code)
     _log_login_stage("deliver_two_factor", delivery_started_at, result="accepted" if delivered else "failed", user_id=user.id)
-    if not delivered:
+    # In dev/test, a fixed DEV_TWO_FACTOR_CODE lets us log in even if no SMTP relay is reachable.
+    if not delivered and not dev_code:
         tf.consumed_at = db.func.now()
         db.session.commit()
         log_activity("ADMIN_LOGIN_2FA_DELIVERY_FAILED", "No se pudo entregar el segundo factor", user=user)
@@ -114,7 +116,10 @@ def login_step1():
     session["2fa_challenge_id"] = tf.id
     log_activity("ADMIN_LOGIN_STEP1_SUCCESS", "Segundo factor solicitado", user=user)
     _log_login_stage("complete", request_started_at, user_id=user.id)
-    return ok({"requires_2fa": True, "preview": _preview_email(user.email)})
+    response = {"requires_2fa": True, "preview": _preview_email(user.email)}
+    if dev_code:
+        response["test_code"] = dev_code
+    return ok(response)
 
 
 @admin_auth_bp.post("/verify-2fa")

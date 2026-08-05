@@ -112,7 +112,10 @@ APPOINTMENT_DEMO_SEED = [
 # ---------------------------------------------------------------------------
 
 def _cleanup_all_data() -> None:
-    """Delete all business data in FK-safe order. Does not touch alembic_version."""
+    """Delete all demo business data in FK-safe order. Does not touch alembic_version
+    or admin_users: administrator accounts are a separate concern and must survive
+    a demo reseed.
+    """
     click.echo("Limpiando datos existentes...")
     db.session.execute(text("DELETE FROM activity_logs"))
     db.session.execute(text("DELETE FROM two_factor_codes"))
@@ -123,7 +126,6 @@ def _cleanup_all_data() -> None:
     db.session.execute(text("DELETE FROM holidays_or_blocked_days"))
     db.session.execute(text("DELETE FROM tribute_types"))
     db.session.execute(text("DELETE FROM locations"))
-    db.session.execute(text("DELETE FROM admin_users"))
     db.session.commit()
     click.echo("Limpieza completa.")
 
@@ -246,6 +248,7 @@ def _create_demo_appointments(tributes_by_name: dict[str, TributeType]) -> int:
 
 def register_cli(app):
     app.cli.add_command(create_admin)
+    app.cli.add_command(create_bootstrap_admin)
     app.cli.add_command(init_db)
     app.cli.add_command(seed_data)
     app.cli.add_command(reset_admin_password)
@@ -271,6 +274,34 @@ def create_admin(username: str, email: str, password: str, is_superuser: str):
     db.session.commit()
     role = "Super Admin" if is_super else "Admin"
     click.echo(f"{role} '{username}' creado correctamente (id={user.id}).")
+
+
+@click.command("create-bootstrap-admin")
+@with_appcontext
+def create_bootstrap_admin():
+    """Crea el primer super admin usando BOOTSTRAP_ADMIN_* si aún no existe ninguno.
+
+    Pensado para despliegues nuevos (Coolify u otros): no hace nada si ya
+    existe algún AdminUser, para no pisar cuentas reales.
+    """
+    import os
+
+    if AdminUser.query.first():
+        click.echo("Ya existen usuarios administradores; no se crea ningún bootstrap admin.")
+        return
+
+    username = os.environ.get("BOOTSTRAP_ADMIN_USERNAME")
+    email = os.environ.get("BOOTSTRAP_ADMIN_EMAIL")
+    password = os.environ.get("BOOTSTRAP_ADMIN_PASSWORD")
+    if not username or not email or not password:
+        click.echo("BOOTSTRAP_ADMIN_USERNAME, BOOTSTRAP_ADMIN_EMAIL y BOOTSTRAP_ADMIN_PASSWORD son requeridas.")
+        return
+
+    user = AdminUser(username=username, email=email, is_superuser=True, is_active=True)
+    user.set_password(password)
+    db.session.add(user)
+    db.session.commit()
+    click.echo(f"Super Admin '{username}' creado correctamente (id={user.id}).")
 
 
 @click.command("reset-admin-password")
@@ -300,6 +331,7 @@ def init_db():
 @with_appcontext
 def seed_data(force: bool):
     """Siembra el escenario demo del Plan 2026: CIU, CIS, Palacio Municipal, 4 días, 48 slots, 2 reservas."""
+    import os
 
     # Check if data exists
     existing_tributes = TributeType.query.count()
@@ -316,6 +348,11 @@ def seed_data(force: bool):
         click.echo(f"  Reglas: {existing_rules}")
         click.echo(f"  Slots: {existing_slots}")
         click.echo("Usá --force para reconstruir el escenario demo.")
+        return
+
+    if has_data and force and os.environ.get("ALLOW_DESTRUCTIVE_SEED", "").lower() != "true":
+        click.echo("ABORTADO: --force borraría tributos, sedes, reglas, slots y turnos existentes.")
+        click.echo("Definí ALLOW_DESTRUCTIVE_SEED=true si realmente querés reconstruir el escenario demo.")
         return
 
     if force:
