@@ -6,9 +6,4 @@ if [ "${RUN_MIGRATIONS:-true}" = "true" ]; then
     flask --app app.py db upgrade
 fi
 
-if [ "${RUN_BOOTSTRAP_ADMIN:-true}" = "true" ]; then
-    echo "Ensuring a bootstrap admin exists..."
-    flask --app app.py create-bootstrap-admin
-fi
-
 exec gunicorn --config /app/gunicorn.conf.py wsgi:app

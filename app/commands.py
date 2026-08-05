@@ -248,7 +248,6 @@ def _create_demo_appointments(tributes_by_name: dict[str, TributeType]) -> int:
 
 def register_cli(app):
     app.cli.add_command(create_admin)
-    app.cli.add_command(create_bootstrap_admin)
     app.cli.add_command(init_db)
     app.cli.add_command(seed_data)
     app.cli.add_command(reset_admin_password)
@@ -274,34 +273,6 @@ def create_admin(username: str, email: str, password: str, is_superuser: str):
     db.session.commit()
     role = "Super Admin" if is_super else "Admin"
     click.echo(f"{role} '{username}' creado correctamente (id={user.id}).")
-
-
-@click.command("create-bootstrap-admin")
-@with_appcontext
-def create_bootstrap_admin():
-    """Crea el primer super admin usando BOOTSTRAP_ADMIN_* si aún no existe ninguno.
-
-    Pensado para despliegues nuevos (Coolify u otros): no hace nada si ya
-    existe algún AdminUser, para no pisar cuentas reales.
-    """
-    import os
-
-    if AdminUser.query.first():
-        click.echo("Ya existen usuarios administradores; no se crea ningún bootstrap admin.")
-        return
-
-    username = os.environ.get("BOOTSTRAP_ADMIN_USERNAME")
-    email = os.environ.get("BOOTSTRAP_ADMIN_EMAIL")
-    password = os.environ.get("BOOTSTRAP_ADMIN_PASSWORD")
-    if not username or not email or not password:
-        click.echo("BOOTSTRAP_ADMIN_USERNAME, BOOTSTRAP_ADMIN_EMAIL y BOOTSTRAP_ADMIN_PASSWORD son requeridas.")
-        return
-
-    user = AdminUser(username=username, email=email, is_superuser=True, is_active=True)
-    user.set_password(password)
-    db.session.add(user)
-    db.session.commit()
-    click.echo(f"Super Admin '{username}' creado correctamente (id={user.id}).")
 
 
 @click.command("reset-admin-password")

@@ -97,7 +97,6 @@ flask run
 
 ```bash
 flask create-admin <user> <email> <password> <true|false>
-flask create-bootstrap-admin    # usa BOOTSTRAP_ADMIN_*
 flask reset-admin-password <user> <new>
 flask init-db
 flask seed-data [--force]
