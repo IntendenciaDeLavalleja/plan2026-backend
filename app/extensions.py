@@ -8,6 +8,7 @@ from flask_limiter.util import get_remote_address
 from flask_talisman import Talisman
 from flask_wtf.csrf import CSRFProtect
 from flask_cors import CORS
+from flask_jwt_extended import JWTManager
 
 db = SQLAlchemy()
 migrate = Migrate()
@@ -18,6 +19,7 @@ limiter = Limiter(key_func=get_remote_address)
 talisman = Talisman()
 csrf = CSRFProtect()
 cors = CORS()
+jwt = JWTManager()
 
 login_manager.login_view = None  # we manage login via the API
 login_manager.session_protection = "strong"

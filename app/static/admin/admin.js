@@ -41,16 +41,16 @@
     if (event.key === 'Escape' && shell.classList.contains('is-nav-open')) closeNav();
   });
 
-  const API_BASE_URL = '/api/v1';
+  const API_BASE_URL = '/admin/api';
   const API_TIMEOUT_MS = 15000;
 
   function buildApiUrl(path) {
     const normalizedPath = String(path || '').trim().replace(/^\/+/, '');
     if (!normalizedPath) throw new Error('La ruta de la API es requerida.');
     if (/^https?:\/\//i.test(normalizedPath) || normalizedPath.startsWith('api/')) {
-      throw new Error('Las rutas administrativas deben ser relativas a /api/v1.');
+      throw new Error('Las rutas administrativas deben ser relativas a /admin/api.');
     }
-    return API_BASE_URL + '/' + normalizedPath;
+    return API_BASE_URL + '/' + normalizedPath.replace(/^admin\//, '');
   }
 
   function errorMessage(json, fallback) {

@@ -1,16 +1,14 @@
 import time
 import uuid
 
-from flask import Flask, g, redirect, request, url_for
+from flask import Flask, g, jsonify, redirect, request, url_for
 from flask_login import current_user
-from redis import Redis
 from redis.exceptions import ConnectionError as RedisConnectionError
-from sqlalchemy import text
 from flask_wtf.csrf import CSRFError
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from .config import Config
-from .extensions import db, migrate, login_manager, mail, ma, limiter, talisman, csrf, cors
+from .extensions import db, migrate, login_manager, mail, ma, limiter, talisman, csrf, cors, jwt
 from .utils.responses import fail
 
 
@@ -37,8 +35,8 @@ def create_app(config_class: type = Config) -> Flask:
     cors.init_app(
         app,
         resources={r"/api/v1/*": {"origins": app.config["CORS_ALLOWED_ORIGINS"]}},
-        supports_credentials=True,
-        allow_headers=["Content-Type", "Authorization", "Accept", "X-Requested-With", "X-CSRFToken", "X-CSRF-Token"],
+        supports_credentials=False,
+        allow_headers=["Content-Type", "Authorization", "Accept", "X-Request-ID"],
         methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         vary_header=True,
     )
@@ -84,6 +82,7 @@ def create_app(config_class: type = Config) -> Flask:
     ma.init_app(app)
     limiter.init_app(app)
     csrf.init_app(app)
+    jwt.init_app(app)
     # Talisman is opt-in for production. Disabled by default for dev convenience.
     # talisman.init_app(app, content_security_policy=app.config.get('CSP'))
 
@@ -99,13 +98,25 @@ def create_app(config_class: type = Config) -> Flask:
 
     @login_manager.unauthorized_handler
     def _on_unauthorized():
-        if request.path.startswith("/api/v1/"):
+        if request.path.startswith(("/api/v1/", "/admin/api/")):
             return _unauthorized()
         return redirect(url_for("admin_ui.login_page"))
 
+    @jwt.unauthorized_loader
+    def _jwt_unauthorized(_reason):
+        return _unauthorized()
+
+    @jwt.invalid_token_loader
+    def _jwt_invalid(_reason):
+        return _unauthorized()
+
+    @jwt.expired_token_loader
+    def _jwt_expired(_header, _payload):
+        return _unauthorized()
+
     @app.errorhandler(CSRFError)
     def _on_csrf_error(err: CSRFError):
-        if request.path.startswith("/api/v1/"):
+        if request.path.startswith(("/api/v1/", "/admin/api/")):
             return fail("La verificación de seguridad expiró. Recargá la página e intentá nuevamente.", 400, code="csrf_failed")
         return err.description, 400
 
@@ -131,19 +142,25 @@ def create_app(config_class: type = Config) -> Flask:
     from .blueprints.admin.access import admin_access_bp
     from .blueprints.admin.tickets import admin_tickets_bp
     from .blueprints.admin.ui import admin_ui_bp
+    from .blueprints.admin.dashboard_auth import dashboard_auth_bp
+    from .blueprints.admin.dashboard_api import dashboard_api_bp
 
     csrf.exempt(public_bp)
+    csrf.exempt(dashboard_auth_bp)
+    csrf.exempt(dashboard_api_bp)
     csrf.exempt(admin_ui_bp)
 
     app.register_blueprint(public_bp, url_prefix="/api/v1/public")
-    app.register_blueprint(admin_auth_bp, url_prefix="/api/v1/admin/auth")
-    app.register_blueprint(admin_dashboard_bp, url_prefix="/api/v1/admin")
-    app.register_blueprint(admin_tribute_types_bp, url_prefix="/api/v1/admin/tribute-types")
-    app.register_blueprint(admin_availability_bp, url_prefix="/api/v1/admin/availability")
-    app.register_blueprint(admin_appointments_bp, url_prefix="/api/v1/admin/appointments")
-    app.register_blueprint(admin_locations_bp, url_prefix="/api/v1/admin/locations")
-    app.register_blueprint(admin_access_bp, url_prefix="/api/v1/admin/access")
-    app.register_blueprint(admin_tickets_bp, url_prefix="/api/v1/admin/tickets")
+    app.register_blueprint(dashboard_auth_bp, url_prefix="/api/v1/admin")
+    app.register_blueprint(dashboard_api_bp, url_prefix="/api/v1/admin")
+    app.register_blueprint(admin_auth_bp, url_prefix="/admin/api/auth")
+    app.register_blueprint(admin_dashboard_bp, url_prefix="/admin/api")
+    app.register_blueprint(admin_tribute_types_bp, url_prefix="/admin/api/tribute-types")
+    app.register_blueprint(admin_availability_bp, url_prefix="/admin/api/availability")
+    app.register_blueprint(admin_appointments_bp, url_prefix="/admin/api/appointments")
+    app.register_blueprint(admin_locations_bp, url_prefix="/admin/api/locations")
+    app.register_blueprint(admin_access_bp, url_prefix="/admin/api/access")
+    app.register_blueprint(admin_tickets_bp, url_prefix="/admin/api/tickets")
     app.register_blueprint(admin_ui_bp)
 
     # Register CLI commands
@@ -156,15 +173,7 @@ def create_app(config_class: type = Config) -> Flask:
 
     @app.get("/healthz")
     def healthz():
-        try:
-            db.session.execute(text("SELECT 1"))
-            rate_limit_uri = app.config["RATELIMIT_STORAGE_URI"]
-            if rate_limit_uri.startswith("redis"):
-                Redis.from_url(rate_limit_uri, socket_connect_timeout=1, socket_timeout=1).ping()
-            return {"status": "ok", "database": "ok", "rate_limiter": "ok", "configuration": "loaded"}
-        except Exception:
-            app.logger.exception("Health check dependency failed")
-            return {"status": "unavailable"}, 503
+        return jsonify({"status": "ok"}), 200
 
     return app
 

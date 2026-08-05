@@ -1,4 +1,5 @@
 import os
+from datetime import timedelta
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -34,11 +35,18 @@ class Config:
     MAIL_TIMEOUT = int(os.environ.get("MAIL_TIMEOUT", 8))
 
     # Frontend & CORS
-    FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:5173")
-    CORS_ALLOWED_ORIGINS = _origins("CORS_ALLOWED_ORIGINS", "https://plan2026.lavalleja.uy")
-    DASHBOARD_ALLOWED_ORIGIN = (os.environ.get("DASHBOARD_ALLOWED_ORIGIN") or "").strip().rstrip("/")
+    FRONTEND_URL = (os.environ.get("FRONTEND_URL") or "https://plan2026.lavalleja.uy").strip().rstrip("/")
+    CORS_ALLOWED_ORIGINS = _origins("CORS_ALLOWED_ORIGINS", "") or _origins("CORS_ORIGINS", "https://plan2026.lavalleja.uy")
+    DASHBOARD_ALLOWED_ORIGIN = (os.environ.get("DASHBOARD_ALLOWED_ORIGIN") or "https://visualizer.plan2026.lavalleja.uy").strip().rstrip("/")
     if DASHBOARD_ALLOWED_ORIGIN and DASHBOARD_ALLOWED_ORIGIN not in CORS_ALLOWED_ORIGINS:
         CORS_ALLOWED_ORIGINS = [*CORS_ALLOWED_ORIGINS, DASHBOARD_ALLOWED_ORIGIN]
+
+    JWT_SECRET_KEY = os.environ.get("JWT_SECRET_KEY") or SECRET_KEY
+    DASHBOARD_JWT_ACCESS_HOURS = max(1, int(os.environ.get("DASHBOARD_JWT_ACCESS_HOURS", "14")))
+    JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=DASHBOARD_JWT_ACCESS_HOURS)
+    JWT_TOKEN_LOCATION = ["headers"]
+    JWT_HEADER_NAME = "Authorization"
+    JWT_HEADER_TYPE = "Bearer"
 
     # Reservation code prefix
     RESERVATION_CODE_PREFIX = os.environ.get("RESERVATION_CODE_PREFIX", "IDL-AF")
