@@ -11,6 +11,7 @@
     <button class="admin-tab" id="tab-create" type="button" role="tab" aria-selected="false" aria-controls="panel-create" tabindex="-1">Crear horarios</button>
     <button class="admin-tab" id="tab-rules" type="button" role="tab" aria-selected="false" aria-controls="panel-rules" tabindex="-1">Reglas</button>
     <button class="admin-tab" id="tab-blocked" type="button" role="tab" aria-selected="false" aria-controls="panel-blocked" tabindex="-1">Días bloqueados</button>
+    <button class="admin-tab" id="tab-purge" type="button" role="tab" aria-selected="false" aria-controls="panel-purge" tabindex="-1">Borrar fechas</button>
   </nav>
 
   <section class="admin-tab-panel" id="panel-calendar" role="tabpanel" aria-labelledby="tab-calendar" tabindex="0">
@@ -149,6 +150,59 @@
     </div>
   </section>
 
+  <section class="admin-tab-panel" id="panel-purge" role="tabpanel" aria-labelledby="tab-purge" tabindex="0" hidden>
+    <div class="admin-card">
+      <div class="admin-card-header">
+        <div>
+          <h2>Borrar fechas</h2>
+          <p>Elimina horarios en lote segun filtros. Los turnos activos vinculados quedan cancelados.</p>
+        </div>
+      </div>
+      <div id="purge-notice" class="admin-alert" hidden role="status" aria-live="polite"></div>
+      <form class="admin-toolbar" id="purge-filters">
+        <div class="admin-form-grid">
+          <div class="admin-field">
+            <label for="purge-tribute">Tributo</label>
+            <select class="admin-select" id="purge-tribute"><option value="">Todos los tributos</option></select>
+          </div>
+          <div class="admin-field">
+            <label for="purge-location">Sede</label>
+            <select class="admin-select" id="purge-location"><option value="">Todas las sedes</option></select>
+          </div>
+          <div class="admin-field">
+            <label for="purge-from">Desde</label>
+            <input class="admin-input" id="purge-from" type="date" />
+          </div>
+          <div class="admin-field">
+            <label for="purge-to">Hasta</label>
+            <input class="admin-input" id="purge-to" type="date" />
+          </div>
+          <label class="admin-check">
+            <input id="purge-blocked" type="checkbox" />
+            <span><strong>Solo bloqueados</strong><small>Limita el borrado a los horarios bloqueados.</small></span>
+          </label>
+          <div class="admin-toolbar-actions">
+            <button class="admin-button" type="submit">Ver que se va a borrar</button>
+            <button class="admin-button admin-button-secondary" id="purge-clear" type="button">Limpiar</button>
+          </div>
+        </div>
+      </form>
+      <p id="purge-summary" role="status" aria-live="polite"></p>
+      <p id="purge-codes" class="admin-hint" hidden></p>
+      <div id="purge-state" class="admin-empty" role="status">Ejecuta una vista previa para ver que se va a borrar.</div>
+      <div class="admin-table-region" id="purge-table-wrap" tabindex="0" aria-label="Fechas alcanzadas por el borrado" hidden>
+        <table class="admin-table">
+          <caption>Fechas alcanzadas</caption>
+          <thead><tr><th scope="col">Fecha</th><th scope="col">Horarios</th></tr></thead>
+          <tbody id="purge-rows"></tbody>
+        </table>
+      </div>
+      <div class="admin-actions">
+        <button class="admin-button admin-button-danger" id="purge-execute" type="button" disabled>Eliminar definitivamente</button>
+      </div>
+    </div>
+  </section>
+
   <dialog class="admin-dialog" id="slot-dialog" aria-labelledby="slot-dialog-title">
     <form class="admin-dialog-form" id="slot-form">
       <header class="admin-dialog-header"><div><h2 id="slot-dialog-title">Editar horario</h2><p id="slot-dialog-description"></p></div><button class="admin-dialog-close" type="button" data-dialog-close aria-label="Cerrar">×</button></header>
@@ -214,6 +268,22 @@
       <footer class="admin-dialog-footer"><button class="admin-button admin-button-secondary" type="button" data-dialog-close>Cancelar</button><button class="admin-button admin-button-danger" id="confirm-action" type="button">Confirmar</button></footer>
     </form>
   </dialog>
+
+  <dialog class="admin-dialog" id="purge-confirm-dialog" aria-labelledby="purge-confirm-title">
+    <form method="dialog" id="purge-confirm-form">
+      <h2 id="purge-confirm-title">Confirmar borrado en lote</h2>
+      <p id="purge-confirm-summary"></p>
+      <div class="admin-field">
+        <label for="purge-confirm-input">Escribi <strong>BORRAR</strong> para habilitar la accion</label>
+        <input class="admin-input" id="purge-confirm-input" type="text" autocomplete="off" />
+      </div>
+      <div id="purge-dialog-notice" class="admin-alert" hidden role="alert"></div>
+      <div class="admin-dialog-actions">
+        <button class="admin-button admin-button-secondary" type="button" data-dialog-close>Cancelar</button>
+        <button class="admin-button admin-button-danger" id="purge-confirm-submit" type="button" disabled>Eliminar definitivamente</button>
+      </div>
+    </form>
+  </dialog>
 {% endblock %}
 
 {% block scripts %}
@@ -223,7 +293,7 @@
 
   const ui = window.AdminUI;
   const weekdays = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
-  const state = { tributes: [], locations: [], slots: [], rules: [], holidays: [], bulkStep: 1, confirmAction: null };
+  const state = { tributes: [], locations: [], slots: [], rules: [], holidays: [], bulkStep: 1, confirmAction: null, purgePreview: null };
   const byId = (id) => document.getElementById(id);
   const value = (id) => byId(id).value;
   const numberOrNull = (id) => value(id) ? Number(value(id)) : null;
@@ -289,12 +359,12 @@
   }
 
   function populateReferenceData() {
-    ['slot-filter-tribute', 'slot-tribute', 'block-tribute'].forEach((id) => {
+    ['slot-filter-tribute', 'slot-tribute', 'block-tribute', 'purge-tribute'].forEach((id) => {
       const select = byId(id);
       while (select.options.length > 1) select.remove(1);
       state.tributes.forEach((item) => option(select, item.id, item.name));
     });
-    ['bulk-location', 'rule-location', 'slot-location'].forEach((id) => {
+    ['bulk-location', 'rule-location', 'slot-location', 'purge-location'].forEach((id) => {
       const select = byId(id);
       while (select.options.length > 1) select.remove(1);
       state.locations.forEach((item) => option(select, item.id, item.name));
@@ -642,6 +712,108 @@
     }
   });
 
+  // ---- Borrar fechas (borrado en lote) ---------------------------------
+  function purgeFilters() {
+    return {
+      from: value('purge-from') || null,
+      to: value('purge-to') || null,
+      tribute_type_id: numberOrNull('purge-tribute'),
+      location_id: numberOrNull('purge-location'),
+      only_blocked: byId('purge-blocked').checked
+    };
+  }
+
+  function hasPurgeFilter(filters) {
+    return Boolean(filters.from || filters.to || filters.tribute_type_id || filters.location_id || filters.only_blocked);
+  }
+
+  function resetPurgePreview(message) {
+    state.purgePreview = null;
+    byId('purge-execute').disabled = true;
+    byId('purge-rows').replaceChildren();
+    byId('purge-summary').textContent = '';
+    byId('purge-codes').textContent = '';
+    byId('purge-codes').hidden = true;
+    setDataState('purge', 'empty', message);
+  }
+
+  function renderPurgePreview(data) {
+    state.purgePreview = data;
+    const rows = byId('purge-rows');
+    rows.replaceChildren();
+    (data.dates || []).forEach((entry) => {
+      const row = document.createElement('tr');
+      row.append(element('td', null, ui.formatDate(entry.date)), element('td', null, entry.slots));
+      rows.appendChild(row);
+    });
+    byId('purge-summary').textContent = 'Se eliminaran ' + data.slots + ' horarios. Turnos vinculados: '
+      + data.appointments_total + '. Turnos activos que se van a cancelar: ' + data.appointments_active + '.';
+    const codes = data.codes || [];
+    byId('purge-codes').textContent = codes.length ? 'Codigos de reserva afectados: ' + codes.join(', ') : '';
+    byId('purge-codes').hidden = codes.length === 0;
+    if (data.slots > 0) {
+      setDataState('purge', 'ready', '');
+      byId('purge-execute').disabled = false;
+    } else {
+      setDataState('purge', 'empty', 'Ningun horario coincide con esos filtros.');
+      byId('purge-execute').disabled = true;
+    }
+  }
+
+  async function loadPurgePreview() {
+    const filters = purgeFilters();
+    if (!hasPurgeFilter(filters)) {
+      ui.notify('Indica al menos un filtro antes de previsualizar.', 'error', 'purge-notice');
+      return;
+    }
+    ui.clearNotice('purge-notice');
+    resetPurgePreview('Calculando...');
+    setDataState('purge', 'loading', 'Calculando...');
+    try {
+      const data = await ui.request('admin/availability/slots/bulk-delete', {
+        method: 'POST',
+        body: Object.assign({}, filters, { confirm: false }),
+        timeout: 30000
+      });
+      renderPurgePreview(data);
+    } catch (error) {
+      setDataState('purge', 'error', error.message);
+      ui.notify(error.message, 'error', 'purge-notice');
+    }
+  }
+
+  function openPurgeConfirm() {
+    if (!state.purgePreview || !state.purgePreview.slots) return;
+    byId('purge-confirm-summary').textContent = 'Vas a eliminar ' + state.purgePreview.slots
+      + ' horarios y cancelar ' + state.purgePreview.appointments_active
+      + ' turnos ya reservados. Esta accion no se puede deshacer.';
+    byId('purge-confirm-input').value = '';
+    byId('purge-confirm-submit').disabled = true;
+    ui.clearNotice('purge-dialog-notice');
+    ui.openDialog(byId('purge-confirm-dialog'), byId('purge-execute'));
+  }
+
+  async function executePurge() {
+    const button = byId('purge-confirm-submit');
+    ui.setBusy(button, true, 'Eliminando...');
+    try {
+      const data = await ui.request('admin/availability/slots/bulk-delete', {
+        method: 'POST',
+        body: Object.assign({}, purgeFilters(), { confirm: true }),
+        timeout: 120000
+      });
+      ui.closeDialog(byId('purge-confirm-dialog'));
+      resetPurgePreview('Ejecuta una vista previa para ver que se va a borrar.');
+      ui.notify('Se eliminaron ' + data.deleted_slots + ' horarios y se cancelaron '
+        + data.cancelled_appointments + ' turnos.', 'success', 'purge-notice');
+      await loadSlots();
+    } catch (error) {
+      ui.notify(error.message, 'error', 'purge-dialog-notice');
+    } finally {
+      ui.setBusy(button, false);
+    }
+  }
+
   async function loadRules() {
     setDataState('rules', 'loading', 'Cargando reglas…');
     try {
@@ -860,6 +1032,17 @@
   byId('slot-filters').addEventListener('submit', (event) => { event.preventDefault(); loadSlots(); });
   byId('clear-slot-filters').addEventListener('click', () => { byId('slot-filters').reset(); loadSlots(); });
   byId('reload-slots').addEventListener('click', loadSlots);
+  byId('purge-filters').addEventListener('submit', (event) => { event.preventDefault(); loadPurgePreview(); });
+  byId('purge-clear').addEventListener('click', () => {
+    byId('purge-filters').reset();
+    resetPurgePreview('Ejecuta una vista previa para ver que se va a borrar.');
+    ui.clearNotice('purge-notice');
+  });
+  byId('purge-execute').addEventListener('click', openPurgeConfirm);
+  byId('purge-confirm-input').addEventListener('input', (event) => {
+    byId('purge-confirm-submit').disabled = event.target.value.trim().toUpperCase() !== 'BORRAR';
+  });
+  byId('purge-confirm-submit').addEventListener('click', executePurge);
   byId('reload-rules').addEventListener('click', loadRules);
   byId('reload-holidays').addEventListener('click', loadHolidays);
   byId('new-rule').addEventListener('click', () => openRuleDialog(null));

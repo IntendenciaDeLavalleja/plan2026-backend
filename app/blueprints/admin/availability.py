@@ -7,8 +7,10 @@ from datetime import date, datetime, time
 from flask import Blueprint, request
 from flask_login import login_required
 from marshmallow import ValidationError
+from sqlalchemy import func
 
 from app.extensions import db
+from app.models.appointment import Appointment
 from app.models.availability import (
     AppointmentSlot,
     AvailabilityRule,
@@ -281,6 +283,149 @@ def delete_slot(slot_id: int):
     db.session.commit()
     log_activity("SLOT_DELETE", f"Slot #{slot_id} eliminado")
     return ok({"deleted": True, "id": slot_id})
+
+
+ACTIVE_APPOINTMENT_STATUSES = ("reserved", "confirmed", "called", "in_service")
+
+@admin_availability_bp.post("/slots/bulk-delete")
+@login_required
+def bulk_delete_slots():
+    """Elimina horarios en lote segun filtros.
+
+    Con ``confirm`` distinto de ``True`` devuelve una vista previa y no borra nada.
+    Con ``confirm: true`` cancela los turnos activos vinculados y elimina los slots.
+    """
+    body = request.get_json(silent=True) or {}
+
+    def _parse_date(key):
+        raw = (body.get(key) or "").strip() if isinstance(body.get(key), str) else body.get(key)
+        if not raw:
+            return None
+        try:
+            return datetime.strptime(str(raw), "%Y-%m-%d").date()
+        except (TypeError, ValueError):
+            raise ValueError(key)
+
+    try:
+        date_from = _parse_date("from")
+        date_to = _parse_date("to")
+    except ValueError as err:
+        return fail(
+            f"Fecha invalida en '{err.args[0]}'. Formato esperado AAAA-MM-DD.",
+            400,
+            code="invalid_date",
+        )
+
+    tribute_type_id = body.get("tribute_type_id") or None
+    location_id = body.get("location_id") or None
+    only_blocked = bool(body.get("only_blocked"))
+
+    if not any([date_from, date_to, tribute_type_id, location_id, only_blocked]):
+        return fail(
+            "Indica al menos un filtro. Este endpoint no borra la agenda completa.",
+            400,
+            code="filters_required",
+        )
+    if date_from and date_to and date_from > date_to:
+        return fail("La fecha 'desde' no puede ser posterior a 'hasta'", 400, code="invalid_range")
+
+    q = AppointmentSlot.query
+    if date_from:
+        q = q.filter(AppointmentSlot.date >= date_from)
+    if date_to:
+        q = q.filter(AppointmentSlot.date <= date_to)
+    if tribute_type_id:
+        try:
+            q = q.filter(AppointmentSlot.tribute_type_id == int(tribute_type_id))
+        except (TypeError, ValueError):
+            return fail("tribute_type_id invalido", 400, code="bad_request")
+    if location_id:
+        try:
+            q = q.filter(AppointmentSlot.location_id == int(location_id))
+        except (TypeError, ValueError):
+            return fail("location_id invalido", 400, code="bad_request")
+    if only_blocked:
+        q = q.filter(AppointmentSlot.is_blocked.is_(True))
+
+    slot_ids = [row[0] for row in q.with_entities(AppointmentSlot.id).all()]
+
+    if not slot_ids:
+        return ok({
+            "preview": body.get("confirm") is not True,
+            "slots": 0,
+            "deleted_slots": 0,
+            "appointments_total": 0,
+            "appointments_active": 0,
+            "cancelled_appointments": 0,
+            "dates": [],
+            "codes": [],
+        })
+
+    dates = [
+        {"date": row[0].isoformat(), "slots": int(row[1])}
+        for row in (
+            q.with_entities(AppointmentSlot.date, func.count(AppointmentSlot.id))
+            .group_by(AppointmentSlot.date)
+            .order_by(AppointmentSlot.date.asc())
+            .all()
+        )
+    ]
+
+    linked = Appointment.query.filter(Appointment.slot_id.in_(slot_ids))
+    active = linked.filter(Appointment.status.in_(ACTIVE_APPOINTMENT_STATUSES))
+    appointments_total = linked.count()
+    appointments_active = active.count()
+    codes = [
+        row[0]
+        for row in active.with_entities(Appointment.reservation_code)
+        .order_by(Appointment.id.asc())
+        .limit(200)
+        .all()
+    ]
+
+    if body.get("confirm") is not True:
+        return ok({
+            "preview": True,
+            "slots": len(slot_ids),
+            "appointments_total": appointments_total,
+            "appointments_active": appointments_active,
+            "dates": dates,
+            "codes": codes,
+        })
+
+    chunk_size = 500
+    cancelled = 0
+    for start in range(0, len(slot_ids), chunk_size):
+        chunk = slot_ids[start:start + chunk_size]
+        cancelled += (
+            Appointment.query
+            .filter(Appointment.slot_id.in_(chunk))
+            .filter(Appointment.status.in_(ACTIVE_APPOINTMENT_STATUSES))
+            .update(
+                {Appointment.status: "cancelled", Appointment.cancelled_at: db.func.now()},
+                synchronize_session=False,
+            )
+        )
+        AppointmentSlot.query.filter(AppointmentSlot.id.in_(chunk)).delete(synchronize_session=False)
+    db.session.commit()
+
+    log_activity(
+        "SLOTS_BULK_DELETE",
+        (
+            f"Borrado en lote: {len(slot_ids)} horarios eliminados, {cancelled} turnos cancelados. "
+            f"Filtros: from={date_from} to={date_to} tribute_type_id={tribute_type_id} "
+            f"location_id={location_id} only_blocked={only_blocked}"
+        ),
+    )
+
+    return ok({
+        "preview": False,
+        "deleted_slots": len(slot_ids),
+        "appointments_total": appointments_total,
+        "cancelled_appointments": cancelled,
+        "dates": dates,
+        "codes": codes,
+    })
 
 
 @admin_availability_bp.post("/slots/block")
