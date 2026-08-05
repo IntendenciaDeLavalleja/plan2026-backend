@@ -1,3 +1,5 @@
+import os
+
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from flask_login import LoginManager
@@ -22,4 +24,8 @@ cors = CORS()
 jwt = JWTManager()
 
 login_manager.login_view = None  # we manage login via the API
-login_manager.session_protection = "strong"
+# "strong" invalida la sesion cuando cambia el identificador (X-Forwarded-For + User-Agent).
+# Detras de Traefik/Cloudflare esa IP cambia entre requests y la sesion se borra sola.
+login_manager.session_protection = os.environ.get("SESSION_PROTECTION", "basic").strip().lower() or None
+if login_manager.session_protection == "none":
+    login_manager.session_protection = None

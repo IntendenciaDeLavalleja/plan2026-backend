@@ -154,6 +154,7 @@ def verify_2fa():
     db.session.commit()
 
     session.clear()
+    session.permanent = True
     login_user(user)
     log_activity("ADMIN_LOGIN_2FA_SUCCESS", "Inicio de sesión exitoso", user=user)
     return ok({"user": user.to_dict()})

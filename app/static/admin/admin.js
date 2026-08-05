@@ -42,13 +42,23 @@
   });
 
   const API_BASE_URL = '/admin/api';
+  const PUBLIC_API_BASE_URL = '/api/v1/public';
   const API_TIMEOUT_MS = 15000;
 
   function buildApiUrl(path) {
     const normalizedPath = String(path || '').trim().replace(/^\/+/, '');
     if (!normalizedPath) throw new Error('La ruta de la API es requerida.');
-    if (/^https?:\/\//i.test(normalizedPath) || normalizedPath.startsWith('api/')) {
-      throw new Error('Las rutas administrativas deben ser relativas a /admin/api.');
+    if (/^https?:\/\//i.test(normalizedPath)) {
+      throw new Error('Las rutas de la API deben ser relativas.');
+    }
+    // Las pantallas administrativas tambien consumen el catalogo publico
+    // (tributos, disponibilidad, slots). Esas rutas viven en /api/v1/public,
+    // no en /admin/api: enrutarlas aca evita 404 silenciosos.
+    if (normalizedPath === 'public' || normalizedPath.startsWith('public/') || normalizedPath.startsWith('public?')) {
+      return PUBLIC_API_BASE_URL + '/' + normalizedPath.replace(/^public\/?/, '');
+    }
+    if (normalizedPath.startsWith('api/')) {
+      return '/' + normalizedPath;
     }
     return API_BASE_URL + '/' + normalizedPath.replace(/^admin\//, '');
   }
@@ -143,7 +153,14 @@
         apiError.data = json;
         apiError.requestId = response.headers.get('X-Request-ID') || requestId;
         if (response.status === 401 && window.location.pathname !== '/admin/login') {
-          window.location.assign('/admin/login');
+          // Antes se redirigia en silencio: el usuario veia los spinners girar y de
+          // golpe aparecia el login, sin ninguna pista de que habia pasado.
+          console.warn('Sesion administrativa rechazada por el servidor.', {
+            url: response.url,
+            requestId: apiError.requestId,
+            code: apiError.code
+          });
+          window.location.assign('/admin/login?motivo=sesion_expirada&rid=' + encodeURIComponent(apiError.requestId || ''));
         }
         throw apiError;
       }

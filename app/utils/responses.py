@@ -36,7 +36,7 @@ def register_error_handlers(app):
 
     @app.errorhandler(HTTPException)
     def _on_http(err: HTTPException):
-        if err.code == 404 and not request.path.startswith("/api/v1/"):
+        if err.code == 404 and not request.path.startswith(("/api/v1/", "/admin/api/")):
             return render_template("errors/404.html", path=request.path), 404
         return fail(err.description or err.name, err.code or 500, code=(err.name or "http_error").lower().replace(" ", "_"))
 

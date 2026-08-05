@@ -35,3 +35,6 @@ build/
 dist/
 *.egg-info/
 *.log
+
+# Parches temporales
+fix/

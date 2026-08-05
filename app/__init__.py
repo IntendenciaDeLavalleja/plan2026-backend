@@ -1,7 +1,7 @@
 import time
 import uuid
 
-from flask import Flask, g, jsonify, redirect, request, url_for
+from flask import Flask, g, jsonify, redirect, request, session, url_for
 from flask_login import current_user
 from redis.exceptions import ConnectionError as RedisConnectionError
 from flask_wtf.csrf import CSRFError
@@ -98,6 +98,19 @@ def create_app(config_class: type = Config) -> Flask:
 
     @login_manager.unauthorized_handler
     def _on_unauthorized():
+        # Diagnostico: deja en los logs de Coolify por que se perdio la sesion.
+        cookie_name = app.config.get("SESSION_COOKIE_NAME") or "session"
+        app.logger.warning(
+            "unauthorized request_id=%s path=%s has_session_cookie=%s session_keys=%s "
+            "remote_addr=%s xff=%s xfproto=%s",
+            getattr(g, "request_id", None),
+            request.path,
+            bool(request.cookies.get(cookie_name)),
+            sorted(session.keys()),
+            request.remote_addr,
+            request.headers.get("X-Forwarded-For"),
+            request.headers.get("X-Forwarded-Proto"),
+        )
         if request.path.startswith(("/api/v1/", "/admin/api/")):
             return _unauthorized()
         return redirect(url_for("admin_ui.login_page"))

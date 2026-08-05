@@ -15,6 +15,10 @@ class Config:
     SESSION_COOKIE_SECURE = os.environ.get("SESSION_COOKIE_SECURE", "False").lower() == "true"
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = os.environ.get("SESSION_COOKIE_SAMESITE", "Lax")
+    SESSION_COOKIE_NAME = os.environ.get("SESSION_COOKIE_NAME", "idl_agenda_session")
+    # Sesion permanente: sobrevive al cierre del navegador y, sobre todo, desactiva el
+    # borrado automatico de sesion de Flask-Login cuando cambia la IP vista tras el proxy.
+    PERMANENT_SESSION_LIFETIME = timedelta(hours=max(1, int(os.environ.get("SESSION_LIFETIME_HOURS", "14"))))
     TRUST_PROXY_HEADERS = os.environ.get("TRUST_PROXY_HEADERS", "False").lower() == "true"
     TRUST_PROXY_COUNT = int(os.environ.get("TRUST_PROXY_COUNT", 1))
     SQLALCHEMY_DATABASE_URI = os.environ.get("DATABASE_URI") or "sqlite:///agenda.db"

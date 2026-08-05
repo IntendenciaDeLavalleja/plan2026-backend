@@ -92,6 +92,15 @@
         'use strict';
 
         const notice = document.getElementById('login-notice');
+        (function showSessionReason() {
+          const params = new URLSearchParams(window.location.search);
+          if (params.get('motivo') !== 'sesion_expirada') return;
+          const rid = params.get('rid');
+          notice.textContent = 'Tu sesión fue rechazada por el servidor y volviste al inicio de sesión.'
+            + (rid ? ' Referencia: ' + rid : '');
+          notice.className = 'admin-alert is-error';
+          notice.hidden = false;
+        }());
         const loginForm = document.getElementById('login-form');
         const twofaForm = document.getElementById('twofa-form');
         const loginSubmit = document.getElementById('login-submit');
