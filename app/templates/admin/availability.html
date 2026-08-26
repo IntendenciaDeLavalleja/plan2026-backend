@@ -40,6 +40,14 @@
             <label for="slot-filter-to">Hasta</label>
             <input class="admin-input" id="slot-filter-to" type="date" />
           </div>
+          <div class="admin-field">
+            <label for="slot-sort">Orden</label>
+            <select class="admin-select" id="slot-sort"><option value="desc">Más recientes primero</option><option value="asc">Más antiguos primero</option></select>
+          </div>
+          <div class="admin-field">
+            <label for="slot-per-page">Resultados por página</label>
+            <select class="admin-select" id="slot-per-page"><option value="25">25</option><option value="50" selected>50</option><option value="100">100</option><option value="200">200</option></select>
+          </div>
           <label class="admin-check">
             <input id="slot-filter-blocked" type="checkbox" />
             <span><strong>Solo bloqueados</strong><small>Oculta los horarios disponibles.</small></span>
@@ -58,6 +66,13 @@
           <tbody id="slot-rows"></tbody>
         </table>
       </div>
+      <nav class="admin-pager" id="slots-pager" aria-label="Paginación de horarios" hidden>
+        <span class="admin-muted" id="slots-page-summary" aria-live="polite"></span>
+        <div class="admin-actions">
+          <button class="admin-button admin-button-secondary" id="slots-previous-page" type="button">Anterior</button>
+          <button class="admin-button admin-button-secondary" id="slots-next-page" type="button">Siguiente</button>
+        </div>
+      </nav>
     </div>
   </section>
 
@@ -108,9 +123,10 @@
         <section class="admin-wizard-panel" data-step="4" aria-labelledby="bulk-step-4-title" hidden>
           <fieldset class="admin-form-section">
             <legend id="bulk-step-4-title" tabindex="-1">Revisá antes de crear</legend>
-            <p class="admin-form-section-description">Los horarios que ya existan pueden no volver a crearse. Por eso el resultado puede ser menor que la estimación.</p>
+            <p class="admin-form-section-description">Los horarios que ya existan no se duplican. Podés conservarlos o actualizar su duración y capacidad.</p>
             <div class="admin-summary" id="bulk-summary"></div>
-            <div class="admin-alert is-warning" role="note"><strong>Posibles duplicados</strong>La generación respeta los horarios existentes. Revisá el resultado antes de volver a intentarlo.</div>
+            <label class="admin-check"><input id="bulk-overwrite" type="checkbox" /><span><strong>Actualizar horarios existentes</strong><small>Actualiza duración y capacidad. No elimina reservas ni desbloquea horarios.</small></span></label>
+            <div class="admin-alert is-warning" role="note"><strong>Sin duplicados</strong>Los horarios con igual tributo, sede, fecha y hora se contabilizan como existentes.</div>
           </fieldset>
         </section>
         <div class="admin-wizard-actions"><button class="admin-button admin-button-secondary" id="bulk-back" type="button" hidden>Anterior</button><button class="admin-button" id="bulk-next" type="button">Continuar</button><button class="admin-button" id="bulk-submit" type="submit" hidden>Crear horarios</button></div>
@@ -293,7 +309,11 @@
 
   const ui = window.AdminUI;
   const weekdays = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
-  const state = { tributes: [], locations: [], slots: [], rules: [], holidays: [], bulkStep: 1, confirmAction: null, purgePreview: null };
+  const state = {
+    tributes: [], locations: [], slots: [], rules: [], holidays: [],
+    slotPagination: { page: 1, perPage: 50, total: 0, pages: 0 },
+    bulkStep: 1, confirmAction: null, purgePreview: null
+  };
   const byId = (id) => document.getElementById(id);
   const value = (id) => byId(id).value;
   const numberOrNull = (id) => value(id) ? Number(value(id)) : null;
@@ -427,9 +447,12 @@
     return node;
   }
 
-  async function loadSlots() {
+  async function loadSlots(page) {
     setDataState('slots', 'loading', 'Cargando horarios…');
-    const params = new URLSearchParams({ per_page: '200' });
+    byId('slots-pager').hidden = true;
+    const requestedPage = Number.isFinite(Number(page)) ? Math.max(1, Number(page)) : state.slotPagination.page;
+    const perPage = Number(value('slot-per-page')) || 50;
+    const params = new URLSearchParams({ page: String(requestedPage), per_page: String(perPage), sort: value('slot-sort') });
     if (value('slot-filter-tribute')) params.set('tribute_type_id', value('slot-filter-tribute'));
     if (value('slot-filter-from')) params.set('from', value('slot-filter-from'));
     if (value('slot-filter-to')) params.set('to', value('slot-filter-to'));
@@ -437,14 +460,26 @@
     try {
       const data = await ui.request('admin/availability/slots?' + params.toString());
       state.slots = getItems(data);
-      renderSlots(data && data.total);
+      state.slotPagination = {
+        page: Number(data && data.page || requestedPage),
+        perPage: Number(data && data.per_page || perPage),
+        total: Number(data && data.total || 0),
+        pages: Number(data && data.pages || 0)
+      };
+      if (!state.slots.length && state.slotPagination.total > 0 && state.slotPagination.page > state.slotPagination.pages) {
+        return loadSlots(state.slotPagination.pages);
+      }
+      renderSlots();
     } catch (error) {
       setDataState('slots', 'error', error.message);
     }
   }
 
-  function renderSlots(total) {
-    if (!state.slots.length) return setDataState('slots', 'empty', 'No hay horarios para los filtros seleccionados.');
+  function renderSlots() {
+    if (!state.slots.length) {
+      byId('slots-pager').hidden = true;
+      return setDataState('slots', 'empty', 'No hay horarios para los filtros seleccionados.');
+    }
     const body = byId('slot-rows');
     body.replaceChildren();
     state.slots.forEach((slot) => {
@@ -468,8 +503,14 @@
       actions.appendChild(buttons);
       body.appendChild(row);
     });
-    const shownTotal = Number.isFinite(Number(total)) ? Number(total) : state.slots.length;
-    byId('slots-caption').textContent = shownTotal + ' horarios encontrados' + (shownTotal > state.slots.length ? '; se muestran los primeros ' + state.slots.length : '');
+    const pagination = state.slotPagination;
+    const first = (pagination.page - 1) * pagination.perPage + 1;
+    const last = first + state.slots.length - 1;
+    byId('slots-caption').textContent = pagination.total + ' horarios encontrados; mostrando ' + first + ' a ' + last;
+    byId('slots-page-summary').textContent = 'Página ' + pagination.page + ' de ' + pagination.pages;
+    byId('slots-previous-page').disabled = pagination.page <= 1;
+    byId('slots-next-page').disabled = pagination.page >= pagination.pages;
+    byId('slots-pager').hidden = pagination.pages <= 1;
     setDataState('slots', 'ready', '');
   }
 
@@ -696,15 +737,23 @@
       start_date: value('bulk-start-date'), end_date: value('bulk-end-date'), weekdays: selectedValues('bulk-weekdays'),
       start_time: value('bulk-start-time'), end_time: value('bulk-end-time'), slot_duration_minutes: Number(value('bulk-duration')),
       capacity_per_slot: Number(value('bulk-capacity')), location_id: numberOrNull('bulk-location'), applies_to_all: byId('bulk-all').checked,
-      tribute_type_ids: selectedValues('bulk-tributes')
+      tribute_type_ids: selectedValues('bulk-tributes'), overwrite: byId('bulk-overwrite').checked
     };
     ui.setBusy(button, true, 'Creando horarios…');
     ui.clearNotice('bulk-notice');
     try {
       const data = await ui.request('admin/availability/slots/bulk-generate', { method: 'POST', body: payload });
-      const count = data && data.created_slots != null ? data.created_slots : 0;
-      ui.notify('Se crearon ' + count + ' horarios.', 'success', 'bulk-notice');
-      await loadSlots();
+      const created = Number(data && data.created_slots || 0);
+      const updated = Number(data && data.updated_slots || 0);
+      const skipped = Number(data && data.skipped_slots || 0);
+      const parts = [created + ' nuevos'];
+      if (updated) parts.push(updated + ' actualizados');
+      if (skipped) parts.push(skipped + ' ya existentes');
+      const kind = created || updated ? 'success' : 'warning';
+      ui.notify('Resultado: ' + parts.join(', ') + '.', kind, 'bulk-notice');
+      byId('slot-filter-from').value = value('bulk-start-date');
+      byId('slot-filter-to').value = value('bulk-end-date');
+      await loadSlots(1);
     } catch (error) {
       ui.notify(error.message + ' Revisá los datos antes de volver a intentar.', 'error', 'bulk-notice');
     } finally {
@@ -1030,9 +1079,13 @@
     }, trigger);
   }
 
-  byId('slot-filters').addEventListener('submit', (event) => { event.preventDefault(); loadSlots(); });
-  byId('clear-slot-filters').addEventListener('click', () => { byId('slot-filters').reset(); loadSlots(); });
-  byId('reload-slots').addEventListener('click', loadSlots);
+  byId('slot-filters').addEventListener('submit', (event) => { event.preventDefault(); loadSlots(1); });
+  byId('clear-slot-filters').addEventListener('click', () => { byId('slot-filters').reset(); loadSlots(1); });
+  byId('slot-sort').addEventListener('change', () => loadSlots(1));
+  byId('slot-per-page').addEventListener('change', () => loadSlots(1));
+  byId('reload-slots').addEventListener('click', () => loadSlots());
+  byId('slots-previous-page').addEventListener('click', () => { if (state.slotPagination.page > 1) loadSlots(state.slotPagination.page - 1); });
+  byId('slots-next-page').addEventListener('click', () => { if (state.slotPagination.page < state.slotPagination.pages) loadSlots(state.slotPagination.page + 1); });
   byId('purge-filters').addEventListener('submit', (event) => { event.preventDefault(); loadPurgePreview(); });
   byId('purge-clear').addEventListener('click', () => {
     byId('purge-filters').reset();

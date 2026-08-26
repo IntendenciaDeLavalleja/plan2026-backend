@@ -182,7 +182,7 @@ def admin_bulk_generate_slots():
     overwrite = bool(body.get("overwrite", False))
     location_id = body.get("location_id")
 
-    created = bulk_generate_slots(
+    result = bulk_generate_slots(
         start_date=start_date,
         end_date=end_date,
         weekdays=weekdays,
@@ -195,8 +195,14 @@ def admin_bulk_generate_slots():
         applies_to_all=applies_to_all,
         overwrite=overwrite,
     )
-    log_activity("SLOTS_BULK", f"Generados {created} slots")
-    return ok({"created_slots": created})
+    log_activity(
+        "SLOTS_BULK",
+        (
+            f"Horarios: {result['created_slots']} creados, "
+            f"{result['updated_slots']} actualizados, {result['skipped_slots']} existentes"
+        ),
+    )
+    return ok(result)
 
 
 # ---------------------------------------------------------------------------
@@ -206,8 +212,11 @@ def admin_bulk_generate_slots():
 @admin_availability_bp.get("/slots")
 @login_required
 def list_slots():
-    page = int(request.args.get("page", 1) or 1)
-    per_page = min(int(request.args.get("per_page", 50) or 50), 200)
+    page = max(int(request.args.get("page", 1) or 1), 1)
+    per_page = min(max(int(request.args.get("per_page", 50) or 50), 1), 200)
+    sort = (request.args.get("sort") or "desc").strip().lower()
+    if sort not in {"asc", "desc"}:
+        return fail("sort debe ser 'asc' o 'desc'", 400, code="invalid_sort")
     q = AppointmentSlot.query
     if request.args.get("tribute_type_id"):
         q = q.filter(AppointmentSlot.tribute_type_id == int(request.args.get("tribute_type_id")))
@@ -225,8 +234,13 @@ def list_slots():
         q = q.filter(AppointmentSlot.is_blocked.is_(True))
 
     total = q.count()
+    order = (
+        (AppointmentSlot.date.asc(), AppointmentSlot.start_time.asc(), AppointmentSlot.id.asc())
+        if sort == "asc"
+        else (AppointmentSlot.date.desc(), AppointmentSlot.start_time.desc(), AppointmentSlot.id.desc())
+    )
     rows = (
-        q.order_by(AppointmentSlot.date.asc(), AppointmentSlot.start_time.asc())
+        q.order_by(*order)
         .offset((page - 1) * per_page)
         .limit(per_page)
         .all()

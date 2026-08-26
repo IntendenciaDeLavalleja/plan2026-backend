@@ -58,12 +58,12 @@ def is_date_blocked(target_date: date) -> bool:
 # Slot generation
 # ---------------------------------------------------------------------------
 
-def generate_slots_for_rule(rule: AvailabilityRule, overwrite: bool = False) -> int:
-    """Materialize slots for a single rule. Returns number of slots created/updated."""
+def _materialize_slots_for_rule(rule: AvailabilityRule, overwrite: bool = False) -> dict[str, int]:
+    """Materialize a rule without committing and report the exact outcome."""
     if not rule.is_active:
-        return 0
+        return {"created_slots": 0, "updated_slots": 0, "skipped_slots": 0}
     if rule.end_date < rule.start_date:
-        return 0
+        return {"created_slots": 0, "updated_slots": 0, "skipped_slots": 0}
 
     weekdays = set(rule.weekdays or [])
     tribute_ids: list[int]
@@ -73,9 +73,11 @@ def generate_slots_for_rule(rule: AvailabilityRule, overwrite: bool = False) -> 
         tribute_ids = [t.id for t in rule.tribute_types if t.is_active]
 
     if not tribute_ids:
-        return 0
+        return {"created_slots": 0, "updated_slots": 0, "skipped_slots": 0}
 
     created = 0
+    updated = 0
+    skipped = 0
     cursor = rule.start_date
     while cursor <= rule.end_date:
         # weekday(): Mon=0..Sun=6 — matches the convention used in the rule
@@ -90,9 +92,20 @@ def generate_slots_for_rule(rule: AvailabilityRule, overwrite: bool = False) -> 
                     ).first()
                     if existing:
                         if overwrite:
-                            existing.end_time = end_t
-                            existing.capacity = rule.capacity_per_slot
-                            existing.rule_id = rule.id
+                            capacity = max(rule.capacity_per_slot, existing.reserved_count)
+                            if (
+                                existing.end_time != end_t
+                                or existing.capacity != capacity
+                                or existing.rule_id != rule.id
+                            ):
+                                existing.end_time = end_t
+                                existing.capacity = capacity
+                                existing.rule_id = rule.id
+                                updated += 1
+                            else:
+                                skipped += 1
+                        else:
+                            skipped += 1
                         continue
                     slot = AppointmentSlot(
                         tribute_type_id=tid,
@@ -106,9 +119,21 @@ def generate_slots_for_rule(rule: AvailabilityRule, overwrite: bool = False) -> 
                     db.session.add(slot)
                     created += 1
         cursor += timedelta(days=1)
-    if created:
+
+    return {
+        "created_slots": created,
+        "updated_slots": updated,
+        "skipped_slots": skipped,
+    }
+
+
+def generate_slots_for_rule(rule: AvailabilityRule, overwrite: bool = False) -> int:
+    """Materialize slots for a saved rule and return created/updated count."""
+    result = _materialize_slots_for_rule(rule, overwrite=overwrite)
+    changed = result["created_slots"] + result["updated_slots"]
+    if changed:
         db.session.commit()
-    return created
+    return changed
 
 
 def bulk_generate_slots(
@@ -124,7 +149,7 @@ def bulk_generate_slots(
     tribute_type_ids: list[int] | None,
     applies_to_all: bool = False,
     overwrite: bool = False,
-) -> int:
+) -> dict[str, int]:
     """Ad-hoc slot generation used by the admin endpoint."""
     rule = AvailabilityRule(
         name="Generación rápida",
@@ -145,8 +170,12 @@ def bulk_generate_slots(
         rule.tribute_types = TributeType.query.filter(TributeType.id.in_(tribute_type_ids)).all()
     db.session.add(rule)
     db.session.flush()
-    created = generate_slots_for_rule(rule, overwrite=overwrite)
-    return created
+    result = _materialize_slots_for_rule(rule, overwrite=overwrite)
+    if result["created_slots"] == 0 and result["updated_slots"] == 0:
+        # Do not persist an empty "Generación rápida" rule when every slot was a duplicate.
+        db.session.delete(rule)
+    db.session.commit()
+    return result
 
 
 # ---------------------------------------------------------------------------
